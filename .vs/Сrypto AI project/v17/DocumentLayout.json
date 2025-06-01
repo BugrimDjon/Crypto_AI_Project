@@ -1,0 +1,301 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\Project programming\\fro AI\\Crypto AI Project\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\services\\okx_candles.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:services\\okx_candles.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\main.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:main.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\database\\config.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:database\\config.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\config\\SettingsCoins.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:config\\SettingsCoins.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\\u0421rypto_AI_Project.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:\u0421rypto_AI_Project.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\services\\candle_service.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:services\\candle_service.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\timeframes.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:enums\\timeframes.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\Enums\\AfterBefore.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:Enums\\AfterBefore.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\coins.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:enums\\coins.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\__init__.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:enums\\__init__.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\config\\settings.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:config\\settings.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|For AI.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\timeframes.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|For AI.pyproj|solutionrelative:enums\\timeframes.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\database\\db.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:database\\db.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{00000000-0000-0000-0000-000000000000}|\u003CSolution\u003E|Crypto AI project||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\db_connect.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|Crypto AI project.pyproj|solutionrelative:db_connect.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|For AI.pyproj|D:\\Project programming\\fro AI\\Crypto AI Project\\config\\settings.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{E315DDD9-6783-4B17-AF83-BD1119EC2191}|For AI.pyproj|solutionrelative:config\\settings.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 1,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedHeight": 216,
+          "SelectedChildIndex": -1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+            }
+          ]
+        },
+        {
+          "DockedHeight": 111,
+          "SelectedChildIndex": 6,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:1:0:{d212f56b-c48a-434c-a121-1c5d80b59b9f}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{4a9b7e51-aa16-11d0-a8c5-00a0c921a4d2}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "__init__.py (Enums)",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\__init__.py",
+              "RelativeDocumentMoniker": "enums\\__init__.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\__init__.py",
+              "RelativeToolTip": "enums\\__init__.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T18:07:50.594Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "settings.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\config\\settings.py",
+              "RelativeDocumentMoniker": "config\\settings.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\config\\settings.py",
+              "RelativeToolTip": "config\\settings.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T13:44:18.673Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "candle_service.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\services\\candle_service.py",
+              "RelativeDocumentMoniker": "services\\candle_service.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\services\\candle_service.py",
+              "RelativeToolTip": "services\\candle_service.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAwAAAAnAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T13:46:37.616Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "okx_candles.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\services\\okx_candles.py",
+              "RelativeDocumentMoniker": "services\\okx_candles.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\services\\okx_candles.py",
+              "RelativeToolTip": "services\\okx_candles.py",
+              "ViewState": "AgIAABIAAAAAAAAAAAAAACkAAAAWAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T15:02:26.215Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{34e76e81-ee4a-11d0-ae2e-00a0c90fffc3}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "main.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\main.py",
+              "RelativeDocumentMoniker": "main.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\main.py",
+              "RelativeToolTip": "main.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAUAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T12:07:08.302Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "config.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\database\\config.py",
+              "RelativeDocumentMoniker": "database\\config.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\database\\config.py",
+              "RelativeToolTip": "database\\config.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T12:04:44.409Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "SettingsCoins.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\config\\SettingsCoins.py",
+              "RelativeDocumentMoniker": "config\\SettingsCoins.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\config\\SettingsCoins.py",
+              "RelativeToolTip": "config\\SettingsCoins.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T15:25:09.132Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "\u0421rypto_AI_Project.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\\u0421rypto_AI_Project.py",
+              "RelativeDocumentMoniker": "\u0421rypto_AI_Project.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\\u0421rypto_AI_Project.py",
+              "RelativeToolTip": "\u0421rypto_AI_Project.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T10:31:16.036Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "timeframes.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\timeframes.py",
+              "RelativeDocumentMoniker": "enums\\timeframes.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\timeframes.py",
+              "RelativeToolTip": "enums\\timeframes.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAAWAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T17:57:27.282Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "coins.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\coins.py",
+              "RelativeDocumentMoniker": "enums\\coins.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\coins.py",
+              "RelativeToolTip": "enums\\coins.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAASAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T11:06:28.485Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "AfterBefore.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\AfterBefore.py",
+              "RelativeDocumentMoniker": "enums\\AfterBefore.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\AfterBefore.py",
+              "RelativeToolTip": "enums\\AfterBefore.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T20:38:04.259Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 11,
+              "Title": "timeframes.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\timeframes.py",
+              "RelativeDocumentMoniker": "enums\\timeframes.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\enums\\timeframes.py",
+              "RelativeToolTip": "enums\\timeframes.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAIAAAAWAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T11:04:24.631Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 12,
+              "Title": "db.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\database\\db.py",
+              "RelativeDocumentMoniker": "database\\db.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\database\\db.py",
+              "RelativeToolTip": "database\\db.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T13:17:30.152Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 13,
+              "Title": "Crypto AI project",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\Crypto AI project.pyproj",
+              "RelativeDocumentMoniker": "Crypto AI project.pyproj",
+              "ToolTip": "D:\\\u0420\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438\\\u0411\u0438\u0440\u0436\u0438\\\u043F\u043E\u0434 \u0418\u0418\\Crypto AI Project\\Crypto AI project.pyproj*",
+              "RelativeToolTip": "..\\..\\..\\\u0420\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u043A\u0438\\\u0411\u0438\u0440\u0436\u0438\\\u043F\u043E\u0434 \u0418\u0418\\Crypto AI Project\\Crypto AI project.pyproj*",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-05-30T14:53:28.978Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 15,
+              "Title": "settings.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\config\\settings.py",
+              "RelativeDocumentMoniker": "config\\settings.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\config\\settings.py",
+              "RelativeToolTip": "config\\settings.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T11:13:15.667Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 14,
+              "Title": "db_connect.py",
+              "DocumentMoniker": "D:\\Project programming\\fro AI\\Crypto AI Project\\db_connect.py",
+              "RelativeDocumentMoniker": "db_connect.py",
+              "ToolTip": "D:\\Project programming\\fro AI\\Crypto AI Project\\db_connect.py",
+              "RelativeToolTip": "db_connect.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
+              "WhenOpened": "2025-05-30T12:43:42.583Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

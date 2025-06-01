@@ -1,0 +1,93 @@
+
+3. Функция агрегирования 1m свечей в N-минутные свечи (например, 5m)
+def aggregate_candles(candles, interval_minutes):
+    """
+    Агрегирует список 1m свечей в свечи с заданным таймфреймом.
+    Предполагается, что candles упорядочены по ts по возрастанию.
+    """
+    aggregated = []
+    interval_ms = interval_minutes * 60 * 1000
+
+    if not candles:
+        return aggregated
+
+    group = []
+    current_group_start = candles[0]['ts'] - (candles[0]['ts'] % interval_ms)
+
+    for candle in candles:
+        candle_start = candle['ts'] - (candle['ts'] % interval_ms)
+        if candle_start != current_group_start:
+            # Собираем свечу из группы
+            aggregated.append(aggregate_group(group, current_group_start))
+            group = []
+            current_group_start = candle_start
+        group.append(candle)
+
+    # Добавить последнюю группу
+    if group:
+        aggregated.append(aggregate_group(group, current_group_start))
+
+    return aggregated
+
+def aggregate_group(group, group_start_ts):
+    """
+    Превращает список 1m свечей в одну свечу с ts = group_start_ts.
+    """
+    o = group[0]['o']
+    c = group[-1]['c']
+    h = max(candle['h'] for candle in group)
+    l = min(candle['l'] for candle in group)
+    vol = sum(candle['vol'] for candle in group)
+    volCcy = sum(candle['volCcy'] for candle in group)
+    volCcyQuote = sum(candle['volCcyQuote'] for candle in group)
+    confirm = 1  # можно поставить 1, т.к. свеча собрана из готовых
+    timeFrame = f"{len(group)}m"
+    baseCoin = group[0]['baseCoin']
+
+    return {
+        'ts': group_start_ts,
+        'o': o,
+        'h': h,
+        'l': l,
+        'c': c,
+        'vol': vol,
+        'volCcy': volCcy,
+        'volCcyQuote': volCcyQuote,
+        'confirm': confirm,
+        'timeFrame': timeFrame,
+        'baseCoin': baseCoin,
+        # Можно оставить остальные индикаторы пустыми (None)
+        'ma50': None,
+        'ma200': None,
+        'ema12': None,
+        'ema26': None,
+        'macd': None,
+        'macd_signal': None,
+        'macd_histogram': None,
+        'rsi14': None,
+        'stochastic_k': None,
+        'stochastic_d': None,
+    }
+4. Пример использования в вашем сервисе
+python
+Копировать
+Редактировать
+def recalc_timeframe(self, baseCoin: from config.SettingsCoins import SettingsCoins,
+                     from_tf: Timeframe, to_tf: Timeframe, interval_minutes: int):
+    # Получаем максимальный ts для нужного таймфрейма
+    last_ts = self.db.get_max_timestamp(timeFrame=to_tf, baseCoin=baseCoin)
+    if last_ts is None:
+        # Если данных нет, возьмём минимум по from_tf (например, 1m)
+        candles = self.db.fetch_candles_from_ts(timeFrame=from_tf, baseCoin=baseCoin, from_ts=0)
+    else:
+        # Начинаем с ts следующей свечи
+        start_ts = last_ts + interval_minutes * 60 * 1000
+        candles = self.db.fetch_candles_from_ts(timeFrame=from_tf, baseCoin=baseCoin, from_ts=start_ts)
+    
+    # Аггрегируем
+    aggregated_candles = aggregate_candles(candles, interval_minutes=interval_minutes)
+
+    # Вставляем обратно
+    self.db.insert_many_candles(aggregated_candles, name_table='fet_data')
+
+    print(f"Пересчитано {len(aggregated_candles)} свечей с {from_tf} в {to_tf}")

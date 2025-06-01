@@ -1,0 +1,240 @@
+﻿# -*- coding: utf-8 -*-
+import inspect
+import mysql.connector
+from mysql.connector import Error
+from config import settings
+from collections import defaultdict
+from enums.timeframes import Timeframe
+from config.SettingsCoins import SettingsCoins
+
+class Database:
+    def __init__(self):
+        self.connection = None
+
+    def connect(self):
+        try:
+            self.connection = mysql.connector.connect(
+                host=settings.DB_HOST,
+                port=settings.DB_PORT,
+                user=settings.DB_USER,
+                password=settings.DB_PASSWORD,
+                database=settings.DB_NAME
+            )
+            if self.connection.is_connected():
+                print(f"Успешное подключение к базе данных")
+        except Error as e:
+            print(f"Ошибка подключения к базе: {e}")
+
+    def close(self):
+        if self.connection and self.connection.is_connected():
+            self.connection.close()
+            print("🔌 Соединение с базой закрыто")
+
+    def insert_candle(self, ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm,
+                      timeFrame, quoteCoin, ma50=None, ma200=None, ema12=None,
+                      ema26=None, macd=None, macd_signal=None, macd_histogram=None,
+                      rsi14=None, stochastic_k=None, stochastic_d=None):
+        
+        if not self.connection or not self.connection.is_connected():
+            print("⚠️ Нет соединения с базой данных")
+            return
+        query = """
+        INSERT INTO fet_data 
+        (ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm, timeFrame, quoteCoin, 
+         ma50, ma200, ema12, ema26, macd, macd_signal, macd_histogram, rsi14, stochastic_k, stochastic_d)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        values = (ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm,
+                  timeFrame, quoteCoin, ma50, ma200, ema12, ema26,
+                  macd, macd_signal, macd_histogram, rsi14, stochastic_k, stochastic_d)
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(query, values)
+            self.connection.commit()
+            # print(f"✅ Запись вставлена: ts={ts}")
+        except Error as e:
+            print(f"❌ Ошибка вставки данных: {e}")
+
+    def fetch_candles(self, limit=10):
+        query = "SELECT * FROM fet_data ORDER BY ts DESC LIMIT %s"
+        try:
+            cursor = self.connection.cursor(dictionary=True)
+            cursor.execute(query, (limit,))
+            return cursor.fetchall()
+        except Error as e:
+            print(f"❌ Ошибка чтения данных: {e}")
+            return []
+        
+
+        
+    def insert_many_candles(self, candle_list, name_table: str):
+        if not self.connection or not self.connection.is_connected():
+            print("⚠️ Нет соединения с базой данных")
+            return
+
+        query = f"""
+        INSERT INTO {name_table}
+        (ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm, timeFrame, quoteCoin, 
+         ma50, ma200, ema12, ema26, macd, macd_signal, macd_histogram, rsi14, stochastic_k, stochastic_d)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        # print(query)
+        values = []
+        for temp in candle_list:
+            values.append((
+                temp["ts"], temp["o"], temp["h"], temp["l"], temp["c"],
+                temp["vol"], temp["volCcy"], temp["volCcyQuote"], temp["confirm"],
+                temp["timeFrame"], temp["quoteCoin"], temp.get("ma50"), temp.get("ma200"),
+                temp.get("ema12"), temp.get("ema26"), temp.get("macd"), temp.get("macd_signal"),
+                temp.get("macd_histogram"), temp.get("rsi14"), temp.get("stochastic_k"), temp.get("stochastic_d")
+            ))
+
+        try:
+            cursor = self.connection.cursor()
+            cursor.executemany(query, values)
+            self.connection.commit()
+            # print(f"✅ Вставлено записей: {len(values)}")
+        except Error as e:
+            print(f"❌ Ошибка при пакетной вставке: {e}")
+
+
+#  Функция для получения максимального ts по таймфрейму и базе (в классе Database)
+    def get_max_timestamp(self, tableName: str, timeFrame: str, quoteCoin: str):
+        try:
+            # ⚠️ Проверяем, что имя таблицы безопасно — латиница, цифры, подчёркивания
+            if not tableName.isidentifier():
+                raise ValueError(f"Недопустимое имя таблицы: {tableName}")
+            
+
+            query = f"""
+            SELECT MAX(ts) as max_ts FROM `{tableName}`
+            WHERE timeFrame = %s AND quoteCoin = %s
+            """
+            # print(query,timeFrame,quoteCoin)
+            cursor = self.connection.cursor()
+            cursor.execute(query, (timeFrame, quoteCoin))
+            result = cursor.fetchone()
+            return result[0] if result and result[0] is not None else None
+        except Error as e:
+            print(f"Ошибка при получении max(ts): {e}")
+            return None
+
+    # 2. Функция выборки 1m свечей с определённого времени (расширим уже имеющуюся fetch_candles)
+    def fetch_candles_from_ts(self, tableName: str, timeFrame: str, from_ts: int, quoteCoin: str, batch_size: int=1000):
+        try:
+            # ⚠️ Проверяем, что имя таблицы безопасно — латиница, цифры, подчёркивания
+            if not tableName.isidentifier():
+                raise ValueError(f"Недопустимое имя таблицы: {tableName}")
+
+            query = f"""
+            SELECT * FROM {tableName}
+            WHERE timeFrame = %s AND quoteCoin = %s AND ts >= %s
+            ORDER BY ts ASC
+            LIMIT {batch_size}
+            """
+            cursor = self.connection.cursor(dictionary=True)
+            cursor.execute(query, (timeFrame, quoteCoin, from_ts))
+            return cursor.fetchall()
+        except Error as e:
+                print(f"Ошибка чтения данных: {e}")
+                return []
+
+    # 3. Функция агрегирования свечей в N-минутные свечи (например, 5m)
+    @staticmethod
+    # def aggregate_candles(candles, target_interval_minutes, source_interval_minutes):
+    def aggregate_candles(candles, to_tf: Timeframe):
+         # Получаем имя текущей функции
+        current_function = inspect.currentframe().f_code.co_name
+
+        aggregated = []
+        group = defaultdict(list)
+        target_interval_minutes=to_tf.minutes
+
+        interval_ms = candles[1]["ts"] - candles[0]["ts"]  # длительность одной входной свечи в миллисекундах
+        input_interval_minutes = interval_ms / 60000       # переводим в минуты
+
+        expected_count = target_interval_minutes / input_interval_minutes  # сколько входных свечей нужно для 1 выходной
+
+        if not expected_count.is_integer():
+            print(f"Метод {current_function}: Входные параметры не совместимы")
+            return
+
+        expected_count = int(expected_count)
+
+
+        # Шаг группировки (в миллисекундах)
+        interval_ms = target_interval_minutes * 60 * 1000
+        
+
+        for candle in candles:
+            # Находим начало нового интервала
+            start_ts = candle['ts'] - (candle['ts'] % interval_ms)
+            group[start_ts].append(candle)
+
+        for start_ts in sorted(group.keys()):
+            group_candles = group[start_ts]
+            if not group_candles or (len(group[start_ts]) < expected_count):
+                continue
+
+            open_price = group_candles[0]['o']
+            high_price = max(c['h'] for c in group_candles)
+            low_price = min(c['l'] for c in group_candles)
+            close_price = group_candles[-1]['c']
+            total_vol = sum(c['vol'] for c in group_candles if c['vol'] is not None)
+            total_vol_ccy = sum(c['volCcy'] for c in group_candles if c['volCcy'] is not None)
+            total_vol_quote = sum(c['volCcyQuote'] for c in group_candles if c['volCcyQuote'] is not None)
+            aggregated.append({
+                'ts': start_ts,
+                'o': open_price,
+                'h': high_price,
+                'l': low_price,
+                'c': close_price,
+                'vol': total_vol,
+                'volCcy': total_vol_ccy,
+                'volCcyQuote': total_vol_quote,
+                'confirm':1,
+                'timeFrame': to_tf.label,
+                'quoteCoin':SettingsCoins.quote_coin()
+            })
+
+        return aggregated
+    
+    def aggregate_group(group, group_start_ts):
+        """
+        Превращает список 1m свечей в одну свечу с ts = group_start_ts.
+        """
+        o = group[0]['o']
+        c = group[-1]['c']
+        h = max(candle['h'] for candle in group)
+        l = min(candle['l'] for candle in group)
+        vol = sum(candle['vol'] for candle in group)
+        volCcy = sum(candle['volCcy'] for candle in group)
+        volCcyQuote = sum(candle['volCcyQuote'] for candle in group)
+        confirm = 1  # можно поставить 1, т.к. свеча собрана из готовых
+        timeFrame = f"{len(group)}m"
+        baseCoin = group[0]['baseCoin']
+
+        return {
+            'ts': group_start_ts,
+            'o': o,
+            'h': h,
+            'l': l,
+            'c': c,
+            'vol': vol,
+            'volCcy': volCcy,
+            'volCcyQuote': volCcyQuote,
+            'confirm': confirm,
+            'timeFrame': timeFrame,
+            'quoteCoin': SettingsCoins.quote_coin(), 
+            # Можно оставить остальные индикаторы пустыми (None)
+            'ma50': None,
+            'ma200': None,
+            'ema12': None,
+            'ema26': None,
+            'macd': None,
+            'macd_signal': None,
+            'macd_histogram': None,
+            'rsi14': None,
+            'stochastic_k': None,
+            'stochastic_d': None,
+        }
