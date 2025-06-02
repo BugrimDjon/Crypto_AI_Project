@@ -134,15 +134,19 @@ class Database:
             cursor = self.connection.cursor(dictionary=True)
             cursor.execute(query, params)
             result=cursor.fetchall()
-            cursor.close()
+            # cursor.close()
             return result 
         except Error as e:
             logging.error(f"Ошибка при выполнении запроса:\n{query}\nПараметры: {params}\nОшибка: {e}")
             return []
 
-    def insert_many_candles(self, candle_list, name_table: str):
+    def insert_many_candles(self, candle_list, name_table: str, return_result: bool=False):
+        output_data = 0
         if not self.connection or not self.connection.is_connected():
             print("⚠️ Нет соединения с базой данных")
+            if return_result:
+                output_data+=1
+                return output_data
             return
 
         query = f"""
@@ -186,7 +190,10 @@ class Database:
             self.connection.commit()
             # print(f"✅ Вставлено записей: {len(values)}")
         except Error as e:
+            output_data+=1
             print(f"❌ Ошибка при пакетной вставке: {e}")
+            if return_result:
+                return output_data
 
     #  Функция для получения максимального ts по таймфрейму и базе (в классе Database)
     def get_max_timestamp(self, tableName: str, timeFrame: str, quoteCoin: str):

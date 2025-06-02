@@ -24,15 +24,16 @@ db.connect()
 # передача открыбой бд в мнтод
 first_load=Servise(db)
 
- first_load.first_load_candles(Coins.FET) # готово
+# first_load.first_load_candles(Coins.FET) # готово
+#err=first_load.check_sequence_timeframes(Coins.FET.value,Timeframe._1min,1717171920000,1748729760000,True)
 
 
-# print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
-# len=1
-# while len!=0:
-#     len=first_load.recalc_timeframe(Coins.FET, Timeframe._1min,Timeframe._5min)
+print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
+len=1
+while len!=0:
+    len=first_load.recalc_timeframe(Coins.FET, Timeframe._1day, Timeframe._1week)
 
-# print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
+print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
 # зкрываем соединение с бд
 db.close()
 
