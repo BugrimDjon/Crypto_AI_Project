@@ -7,6 +7,8 @@ from config.SettingsCoins import SettingsCoins
 from enums.AfterBefore import AfterBefore
 from logger.context_logger import ContextLogger
 
+import pandas as pd
+import ta
 import json
 import logging
 
@@ -155,6 +157,125 @@ class Servise:
             delta_candles = ((stop_time - start_time) / 1000) / time_frame.minutes
             if return_result:
                 return output_data
+
+
+
+    def calculation_of_indicators(self, tableName: Coins):
+        """
+        Выполняет расчет технических индикаторов (MA, EMA, MACD, RSI, Stochastic) 
+        для заданной таблицы и всех таймфреймов, указанных в перечислении Timeframe.
+
+        Алгоритм работы:
+        1. Определяет последнее рассчитанное время (`MAX(ts)`), где уже посчитан индикатор `ma200`.
+        2. Отступает назад на 300 свечей, чтобы пересчитать "хвост" с запасом (перекрытие).
+        3. Загружает из базы данных порцию данных с указанного времени (`start_ts`) и таймфрейма.
+        4. Преобразует записи в DataFrame, рассчитывает индикаторы:
+        - MA50, MA200
+        - EMA12, EMA26
+        - MACD, MACD Signal, MACD Histogram
+        - RSI14
+        - Stochastic %K и %D
+        5. Если используется перекрытие (данные уже частично рассчитаны), 
+        то обрезаются первые 300 строк, чтобы избежать повторной перезаписи.
+        6. Преобразует результат обратно в список словарей и сохраняет в базу данных.
+        7. Цикл повторяется до тех пор, пока не будут обработаны все доступные данные.
+
+        Параметры:
+            tableName (Coins): Перечисление с именем таблицы для обработки.
+
+        Примечания:
+            - Для расчетов требуется минимум 200 строк.
+            - Используется ограничение на количество строк (limit = 10000) при загрузке из БД.
+            - Повторный расчет последних 300 строк обеспечивает непрерывность индикаторов.
+            - Данные сохраняются по мере продвижения вперед по времени на основе MAX(ts).
+        """
+        limit = 10000
+        for tm in Timeframe:
+            lastLap = False
+            old_ts=0
+            counter=0
+
+            while not lastLap:
+                # Получаем последнее время, где уже рассчитан ma200
+                query = f"""
+                    SELECT MAX(ts) AS max_ts FROM {tableName.value}
+                    WHERE ma200 IS NOT NULL AND timeFrame = %s
+                """
+                params = (tm.label,)
+                result = self.db.query_to_bd(query, params)
+                last_calculated_ts = result[0]['max_ts'] if result and result[0]['max_ts'] else 0
+
+                # Отступаем назад на 300 свечей, чтобы пересчитать хвост (если надо)
+                start_ts = int(last_calculated_ts) - tm.minutes * 1000 * 300
+                if start_ts < 0:
+                    start_ts = 0
+
+                # Получаем следующую порцию данных
+                query = f"""
+                    SELECT * FROM {tableName.value}
+                    WHERE ts >= %s AND timeFrame = %s
+                    ORDER BY ts
+                    LIMIT %s
+                """
+                params = (start_ts, tm.label, limit)
+                records = self.db.query_to_bd(query, params)
+
+                if not records:
+                    break  # нечего обрабатывать
+
+                if (len(records) < limit) or (old_ts==records[0]["ts"]):
+                    lastLap = True
+
+                old_ts=records[0]["ts"]
+                # Преобразуем список словарей в DataFrame
+                df = pd.DataFrame(records)
+
+                # Если строк меньше 200, индикаторы считать нельзя
+                if len(df) < 200:
+                    print(f"Недостаточно данных для расчета индикаторов по {tm.label}")
+                    # continue
+
+                # Расчёт индикаторов
+                df["ma50"] = ta.trend.sma_indicator(df["c"], window=50)
+                df["ma200"] = ta.trend.sma_indicator(df["c"], window=200)
+                df["ema12"] = ta.trend.ema_indicator(df["c"], window=12)
+                df["ema26"] = ta.trend.ema_indicator(df["c"], window=26)
+                df["macd"] = ta.trend.macd(df["c"])
+                df["macd_signal"] = ta.trend.macd_signal(df["c"])
+                df["macd_histogram"] = df["macd"] - df["macd_signal"]
+                df["rsi14"] = ta.momentum.rsi(df["c"], window=14)
+
+                stoch = ta.momentum.StochasticOscillator(
+                    high=df["h"],
+                    low=df["l"],
+                    close=df["c"],
+                    window=14,
+                    smooth_window=3
+                )
+                df["stochastic_k"] = stoch.stoch()
+                df["stochastic_d"] = stoch.stoch_signal()
+
+                if start_ts > 0:
+                    # Обрезаем первые 300 строк
+                    df = df.iloc[300:]
+                    if df.empty:
+                        continue
+
+                
+
+                # Преобразуем обратно в список словарей
+                result_to_save = [
+                        {k: (None if pd.isna(v) else v) for k, v in row.items()}
+                        for row in df.to_dict(orient="records")]
+                
+                counter+=1
+                logging.info(ContextLogger.string_context()+f"""
+                Таймфрейм = {tm.label},        проход - {counter},          обработано - {counter*9700} записей""")
+                # Сохраняем
+                self.db.insert_many_indikator(result_to_save, tableName.value)
+
+
+
 
     def recalc_timeframe(self, baseCoin: Coins, from_tf: Timeframe, to_tf: Timeframe):
         interval_minutes = to_tf.minutes / from_tf.minutes

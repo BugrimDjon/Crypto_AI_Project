@@ -7,20 +7,19 @@ from config import settings
 from collections import defaultdict
 from enums.timeframes import Timeframe
 from config.SettingsCoins import SettingsCoins
+from logger.context_logger import ContextLogger
 
 import logging
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,  # или DEBUG, WARNING, ERROR
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler("app.log", encoding="utf-8"),  # Писать в файл
-        logging.StreamHandler()  # Писать в консоль
-    ]
+        logging.StreamHandler(),  # Писать в консоль
+    ],
 )
-
-
 
 
 class Database:
@@ -133,19 +132,23 @@ class Database:
         try:
             cursor = self.connection.cursor(dictionary=True)
             cursor.execute(query, params)
-            result=cursor.fetchall()
+            result = cursor.fetchall()
             # cursor.close()
-            return result 
+            return result
         except Error as e:
-            logging.error(f"Ошибка при выполнении запроса:\n{query}\nПараметры: {params}\nОшибка: {e}")
+            logging.error(
+                f"Ошибка при выполнении запроса:\n{query}\nПараметры: {params}\nОшибка: {e}"
+            )
             return []
 
-    def insert_many_candles(self, candle_list, name_table: str, return_result: bool=False):
+    def insert_many_candles(
+        self, candle_list, name_table: str, return_result: bool = False
+    ):
         output_data = 0
         if not self.connection or not self.connection.is_connected():
             print("⚠️ Нет соединения с базой данных")
             if return_result:
-                output_data+=1
+                output_data += 1
                 return output_data
             return
 
@@ -190,7 +193,7 @@ class Database:
             self.connection.commit()
             # print(f"✅ Вставлено записей: {len(values)}")
         except Error as e:
-            output_data+=1
+            output_data += 1
             print(f"❌ Ошибка при пакетной вставке: {e}")
             if return_result:
                 return output_data
@@ -349,3 +352,67 @@ class Database:
             "stochastic_k": None,
             "stochastic_d": None,
         }
+
+    def insert_many_indikator(self, data, name_table: str, return_result: bool = False):
+        output_data = 0
+        if not data:
+            logging.info(ContextLogger.string_context() + " ⚠️ Нет данных для вставки")
+            if return_result:
+                return output_data
+
+        if not self.connection or not self.connection.is_connected():
+            print("⚠️ Нет соединения с базой данных")
+            if return_result:
+                output_data += 1
+                return output_data
+            return
+
+        query = f"""
+        INSERT INTO {name_table}
+        (ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm, timeFrame, quoteCoin, 
+         ma50, ma200, ema12, ema26, macd, macd_signal, macd_histogram, rsi14, stochastic_k, stochastic_d)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+        ma50=VALUES(ma50), ma200=VALUES(ma200), ema12=VALUES(ema12), ema26=VALUES(ema26), macd=VALUES(macd), 
+        macd_signal=VALUES(macd_signal), macd_histogram=VALUES(macd_histogram), rsi14=VALUES(rsi14),
+        stochastic_k=VALUES(stochastic_k), stochastic_d=VALUES(stochastic_d)
+        """
+        # print(query)
+        values = []
+        for temp in data:
+            values.append(
+                (
+                    temp["ts"],
+                    temp["o"],
+                    temp["h"],
+                    temp["l"],
+                    temp["c"],
+                    temp["vol"],
+                    temp["volCcy"],
+                    temp["volCcyQuote"],
+                    temp["confirm"],
+                    temp["timeFrame"],
+                    temp["quoteCoin"],
+                    temp.get("ma50"),
+                    temp.get("ma200"),
+                    temp.get("ema12"),
+                    temp.get("ema26"),
+                    temp.get("macd"),
+                    temp.get("macd_signal"),
+                    temp.get("macd_histogram"),
+                    temp.get("rsi14"),
+                    temp.get("stochastic_k"),
+                    temp.get("stochastic_d"),
+                )
+            )
+
+        try:
+            cursor = self.connection.cursor()
+            cursor.executemany(query, values)
+            self.connection.commit()
+            # print(f"✅ Вставлено записей: {len(values)}")
+        except Error as e:
+            output_data += 1
+            logging.error(ContextLogger.string_context() + f"❌ Ошибка при пакетной вставке: {e}")
+            if return_result:
+                return output_data

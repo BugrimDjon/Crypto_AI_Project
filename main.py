@@ -22,18 +22,21 @@ clear_console()
 db = Database()
 db.connect()
 # передача открыбой бд в мнтод
-first_load=Servise(db)
+run_servis=Servise(db)
 
-# first_load.first_load_candles(Coins.FET) # готово
-#err=first_load.check_sequence_timeframes(Coins.FET.value,Timeframe._1min,1717171920000,1748729760000,True)
+# run_servis.first_load_candles(Coins.FET) # готово
+# err=run_servis.check_sequence_timeframes(Coins.FET.value,Timeframe._5min,1717171920000,1748729760000,True)
 
 
-print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
-len=1
-while len!=0:
-    len=first_load.recalc_timeframe(Coins.FET, Timeframe._1day, Timeframe._1week)
+# print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
+# len=1
+# while len!=0:
+# len=run_servis.recalc_timeframe(Coins.FET, Timeframe._1day, Timeframe._1week)
 
-print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
+run_servis.calculation_of_indicators(Coins.FET)
+
+
+# print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
 # зкрываем соединение с бд
 db.close()
 
