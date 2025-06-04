@@ -209,7 +209,7 @@ class Database:
             SELECT MAX(ts) as max_ts FROM `{tableName}`
             WHERE timeFrame = %s AND quoteCoin = %s
             """
-            # print(query,timeFrame,quoteCoin)
+            # print(query,timeFrame ,quoteCoin)
             cursor = self.connection.cursor()
             cursor.execute(query, (timeFrame, quoteCoin))
             result = cursor.fetchone()
@@ -276,7 +276,16 @@ class Database:
 
         for candle in candles:
             # Находим начало нового интервала
-            start_ts = candle["ts"] - (candle["ts"] % interval_ms)
+            if (to_tf==Timeframe._1week):
+                        # Выравниваем по понедельнику 00:00 UTC
+                monday_shift = 4 * 24 * 60 * 60 * 1000  # 4 дня в миллисекундах
+                week_ms = 7 * 24 * 60 * 60 * 1000       # 1 неделя в миллисекундах
+
+                shifted = candle["ts"] - monday_shift
+                start_ts = shifted - (shifted % week_ms) + monday_shift
+            else:
+                start_ts = candle["ts"] - (candle["ts"] % interval_ms)
+
             group[start_ts].append(candle)
 
         for start_ts in sorted(group.keys()):

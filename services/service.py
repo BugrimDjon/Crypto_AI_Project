@@ -93,7 +93,7 @@ class Servise:
                 delta_candles = 10000
             step = time_frame.minutes * 1000 * 60
             query = f""" SELECT ts FROM {table_name}
-                    where timeFrame=%s and ts>%s
+                    where timeFrame=%s and ts>=%s
                     ORDER BY ts ASC
                     limit %s;
             """
@@ -128,18 +128,18 @@ class Servise:
                             afterBefore=AfterBefore.After,
                             start_time=str(start_time_for_reqwest),
                         )
-                        with open(
-                            r"D:\Project_programming\for_AI\data_candles.json",
-                            "w",
-                            encoding="utf-8",
-                        ) as f:
-                            json.dump(data_candles, f, ensure_ascii=False, indent=4)
-                        with open(
-                            r"D:\Project_programming\for_AI\test.json",
-                            "w",
-                            encoding="utf-8",
-                        ) as f:
-                            json.dump(request, f, ensure_ascii=False, indent=4)
+                        # with open(
+                        #     r"D:\Project_programming\for_AI\data_candles.json",
+                        #     "w",
+                        #     encoding="utf-8",
+                        # ) as f:
+                        #     json.dump(data_candles, f, ensure_ascii=False, indent=4)
+                        # with open(
+                        #     r"D:\Project_programming\for_AI\test.json",
+                        #     "w",
+                        #     encoding="utf-8",
+                        # ) as f:
+                        #     json.dump(request, f, ensure_ascii=False, indent=4)
                         for x in data_candles:
                             x["timeFrame"] = time_frame.label
                             x["quoteCoin"] = SettingsCoins.quote_coin()
@@ -155,14 +155,13 @@ class Servise:
 
             start_time = int(request[-1]["ts"])
             delta_candles = ((stop_time - start_time) / 1000) / time_frame.minutes
-            if return_result:
-                return output_data
 
-
+        if return_result:
+            return output_data
 
     def calculation_of_indicators(self, tableName: Coins):
         """
-        Выполняет расчет технических индикаторов (MA, EMA, MACD, RSI, Stochastic) 
+        Выполняет расчет технических индикаторов (MA, EMA, MACD, RSI, Stochastic)
         для заданной таблицы и всех таймфреймов, указанных в перечислении Timeframe.
 
         Алгоритм работы:
@@ -175,7 +174,7 @@ class Servise:
         - MACD, MACD Signal, MACD Histogram
         - RSI14
         - Stochastic %K и %D
-        5. Если используется перекрытие (данные уже частично рассчитаны), 
+        5. Если используется перекрытие (данные уже частично рассчитаны),
         то обрезаются первые 300 строк, чтобы избежать повторной перезаписи.
         6. Преобразует результат обратно в список словарей и сохраняет в базу данных.
         7. Цикл повторяется до тех пор, пока не будут обработаны все доступные данные.
@@ -192,8 +191,9 @@ class Servise:
         limit = 10000
         for tm in Timeframe:
             lastLap = False
-            old_ts=0
-            counter=0
+            old_ts = 0
+            counter = 0
+            number_of_records = 0
 
             while not lastLap:
                 # Получаем последнее время, где уже рассчитан ma200
@@ -203,10 +203,12 @@ class Servise:
                 """
                 params = (tm.label,)
                 result = self.db.query_to_bd(query, params)
-                last_calculated_ts = result[0]['max_ts'] if result and result[0]['max_ts'] else 0
+                last_calculated_ts = (
+                    result[0]["max_ts"] if result and result[0]["max_ts"] else 0
+                )
 
                 # Отступаем назад на 300 свечей, чтобы пересчитать хвост (если надо)
-                start_ts = int(last_calculated_ts) - tm.minutes * 1000 * 300
+                start_ts = int(last_calculated_ts) - tm.minutes *60* 1000 * 300
                 if start_ts < 0:
                     start_ts = 0
 
@@ -223,16 +225,18 @@ class Servise:
                 if not records:
                     break  # нечего обрабатывать
 
-                if (len(records) < limit) or (old_ts==records[0]["ts"]):
+                if (len(records) < limit) or (old_ts == records[0]["ts"]):
                     lastLap = True
 
-                old_ts=records[0]["ts"]
+                old_ts = records[0]["ts"]
                 # Преобразуем список словарей в DataFrame
                 df = pd.DataFrame(records)
 
                 # Если строк меньше 200, индикаторы считать нельзя
                 if len(df) < 200:
-                    print(f"Недостаточно данных для расчета индикаторов по {tm.label}")
+                    print(
+                        f"Недостаточно данных для расчета некоторых индикаторов по {tm.label}"
+                    )
                     # continue
 
                 # Расчёт индикаторов
@@ -246,11 +250,7 @@ class Servise:
                 df["rsi14"] = ta.momentum.rsi(df["c"], window=14)
 
                 stoch = ta.momentum.StochasticOscillator(
-                    high=df["h"],
-                    low=df["l"],
-                    close=df["c"],
-                    window=14,
-                    smooth_window=3
+                    high=df["h"], low=df["l"], close=df["c"], window=14, smooth_window=3
                 )
                 df["stochastic_k"] = stoch.stoch()
                 df["stochastic_d"] = stoch.stoch_signal()
@@ -261,21 +261,21 @@ class Servise:
                     if df.empty:
                         continue
 
-                
-
                 # Преобразуем обратно в список словарей
                 result_to_save = [
-                        {k: (None if pd.isna(v) else v) for k, v in row.items()}
-                        for row in df.to_dict(orient="records")]
-                
-                counter+=1
-                logging.info(ContextLogger.string_context()+f"""
-                Таймфрейм = {tm.label},        проход - {counter},          обработано - {counter*9700} записей""")
+                    {k: (None if pd.isna(v) else v) for k, v in row.items()}
+                    for row in df.to_dict(orient="records")
+                ]
+
+                counter += 1
+                number_of_records += len(df)
+                logging.info(
+                    ContextLogger.string_context()
+                    + f"""
+                Таймфрейм = {tm.label},        проход - {counter},          обработано - {number_of_records} записей"""
+                )
                 # Сохраняем
                 self.db.insert_many_indikator(result_to_save, tableName.value)
-
-
-
 
     def recalc_timeframe(self, baseCoin: Coins, from_tf: Timeframe, to_tf: Timeframe):
         interval_minutes = to_tf.minutes / from_tf.minutes
@@ -283,7 +283,7 @@ class Servise:
             print("Входные таймфреймы не совместимы")
             return
         interval_minutes = int(interval_minutes)
-        # Получаем максимальный ts для нужного таймфрейма
+        # Получаем максимальный ts для нужного таймфрейма, самый свежий ts когда был рассчитан данный таймфрейм
         last_ts = self.db.get_max_timestamp(
             baseCoin.value, timeFrame=to_tf.label, quoteCoin=SettingsCoins.quote_coin()
         )
@@ -293,7 +293,7 @@ class Servise:
             candles = self.db.fetch_candles_from_ts(
                 baseCoin.value, from_tf.label, 0, SettingsCoins.quote_coin(), 10000
             )
-        else:
+        else: 
             # Начинаем с ts следующей свечи
             start_ts = last_ts + interval_minutes * 60 * 1000
             candles = self.db.fetch_candles_from_ts(
@@ -304,11 +304,49 @@ class Servise:
                 10000,
             )
 
-        # Аггрегируем
-        aggregated_candles = Database.aggregate_candles(candles, to_tf)
+            #Если len(candles) то свеча однозначно не полная и пересчитывать не надо
+            # это модет быть когда пересчитал 15 минутный таймфрейм в 15 (30) мин. и в 15 (30) мин
+            # опрашиваеш снова, тогда форминуется len(candles)>1 а так как метод aggregate_candles
+            # требует как минимум 2 списка в aggregate_candles то это приводит к ошибке
+        if(len(candles)>1):
+            # Аггрегируем
+            aggregated_candles = Database.aggregate_candles(candles, to_tf)
 
-        # Вставляем обратно
-        self.db.insert_many_candles(aggregated_candles, name_table=baseCoin.value)
+            # Вставляем обратно
+            self.db.insert_many_candles(aggregated_candles, name_table=baseCoin.value)
 
-        print(f"Пересчитано {len(aggregated_candles)} свечей с {from_tf} в {to_tf}")
-        return len(aggregated_candles)
+            print(f"Пересчитано {len(aggregated_candles)} свечей с {from_tf} в {to_tf}")
+            return len(aggregated_candles)
+        else:
+            print(f"Пересчитано {0} свечей с {from_tf} в {to_tf}")
+            return 0
+
+
+    def data_for_update(self, table_name=Coins):
+        query = f"""
+                    SELECT MAX(ts) AS max_ts FROM {table_name.value}
+                    WHERE timeFrame= "1m"
+                """
+        result = self.db.query_to_bd(query, ())
+        last_time_in_database = result[0]["max_ts"]
+
+        fetcher = OkxCandlesFetcher(instId=table_name.value, bar=Timeframe._1min)
+        data = fetcher.fetch_candles(limit=1)
+
+        if last_time_in_database < int(data[0]["ts"]):
+            for x in data:
+                x["timeFrame"] = Timeframe._1min.label
+                x["quoteCoin"] = SettingsCoins.quote_coin()
+
+            self.db.insert_many_candles(data, table_name.value)
+        query = f"""
+                    SELECT MIN(ts) AS max_ts FROM {table_name.value}
+                    WHERE timeFrame= "1m"
+                """
+        result = self.db.query_to_bd(query, ())
+        time_in_database = result[0]["max_ts"]
+
+        return {
+            "time_in_database": time_in_database,
+            "current_time_on_the_exchange": data[0]["ts"],
+        }
