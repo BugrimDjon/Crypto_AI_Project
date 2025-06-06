@@ -18,6 +18,8 @@ from enums.timeframes import Timeframe
 from config.SettingsCoins import SettingsCoins
 from enums.AfterBefore import AfterBefore
 from logger.context_logger import ContextLogger
+from AI.AIModelService import AIModelService
+from datetime import datetime
 
 import pandas as pd
 import ta
@@ -37,62 +39,34 @@ logging.basicConfig(
 
 class Servise:
     def __init__(self, db: Database) -> None:
-        self.model = None
-        self.feature_scaler = None
-        self.target_scaler = None
         self.db = db
+        self.ai_service=AIModelService(db)
+
+
 
     def load_model_and_scalers(self):
-        self.model = load_model('lstm_model.h5', compile=False)
-        self.feature_scaler = joblib.load('feature_scaler.save')
-        self.target_scaler = joblib.load('target_scaler.save')
-        print("Модель и скейлеры успешно загружены.")
+        self.ai_service.load_model_and_scalers()
 
-    def out_ai(self, table_name: Coins, time_frame: Timeframe) -> float:
-        if self.model is None or self.feature_scaler is None or self.target_scaler is None:
-            raise ValueError("Модель и скейлеры не загружены. Вызови load_model_and_scalers сначала.")
-
-        query = f"""
-            SELECT o, h, l, c,
-                vol, volCcy, volCcyQuote,
-                ma50, ma200, ema12, ema26,
-                macd, macd_signal, rsi14, macd_histogram,
-                stochastic_k, stochastic_d
-            FROM {table_name.value}
-            WHERE timeFrame = %s
-            ORDER BY ts DESC
-            LIMIT 60;
-        """
-        params = (time_frame.label,)
-        rows = self.db.query_to_bd(query, params)
-
-        if len(rows) < 60:
-            raise ValueError(f"Недостаточно данных: {len(rows)}")
-
-        keys = ['o', 'h', 'l', 'c',
-                'vol', 'volCcy', 'volCcyQuote',
-                'ma50', 'ma200', 'ema12', 'ema26',
-                'macd', 'macd_signal', 'rsi14', 'macd_histogram',
-                'stochastic_k', 'stochastic_d']
-
-        input_array = np.array([[row[key] for key in keys] for row in rows[::-1]])
-
-        if input_array.shape != (60, len(keys)):
-            raise ValueError(f"Неверная форма массива: {input_array.shape}")
-
-        scaled_input = self.feature_scaler.transform(input_array)
-        X = np.expand_dims(scaled_input, axis=0)
-
-        pred_scaled = self.model.predict(X)
-        predicted_price = self.target_scaler.inverse_transform(pred_scaled)
-
-        return float(predicted_price[0][0])
+    def predict_price(self, table_name: Coins, time_frame: Timeframe) -> float:
+        return(self.ai_service.predict_price(table_name, time_frame))
+    
+    def train_model(self, table_name: Coins, time_frame: Timeframe, limit: int=500000, window_size:int=60, horizon:int=1):
+        return(self.ai_service.train_model(table_name, time_frame, limit, window_size, horizon))
 
 
 
-
-
-
+    def repord_db(self,table_name:Coins):
+        print (f"Монета {table_name.value}")
+        for i in Timeframe:
+            query=f"""SELECT MAX(ts) AS max_ts, 
+                    min(ts) AS min_ts,
+                    count(ts) as count FROM {table_name.value}
+                    where timeFrame=%s;"""
+            params = (i.label,)
+            request = self.db.query_to_bd(query, params)
+            dt_max=datetime.fromtimestamp(request[0]["max_ts"] / 1000)
+            dt_min=datetime.fromtimestamp(request[0]["min_ts"] / 1000)
+            print(f"Таймфрейм {i.label}   начало {dt_min}         конец {dt_min}      колличество записей {request[0]["count"]}")
 
     def first_load_candles(self, coin: Coins, length_in_hours: int=365 * 24):
 
@@ -154,7 +128,7 @@ class Servise:
 
         if start_time > stop_time:
             start_time, stop_time = stop_time, start_time
-        delta_candles = int(((stop_time - start_time) / 1000) / time_frame.minutes)
+        delta_candles = (stop_time - start_time) // (time_frame.minutes * 60 * 1000)+1
         while delta_candles > 0:
             if delta_candles > 10000:
                 delta_candles = 10000
@@ -256,7 +230,7 @@ class Servise:
             - Повторный расчет последних 300 строк обеспечивает непрерывность индикаторов.
             - Данные сохраняются по мере продвижения вперед по времени на основе MAX(ts).
         """
-        limit = 10000
+        limit = 50000
         for tm in Timeframe:
             lastLap = False
             old_ts = 0
@@ -363,7 +337,7 @@ class Servise:
             if last_ts is None:
                 # Если данных нет, возьмём минимум по from_tf
                 candles = self.db.fetch_candles_from_ts(
-                    baseCoin.value, from_tf.label, 0, SettingsCoins.quote_coin(), 10000
+                    baseCoin.value, from_tf.label, 0, SettingsCoins.quote_coin(), 50000
                 )
             else:
                 # Начинаем с ts следующей свечи
@@ -373,7 +347,7 @@ class Servise:
                     from_tf.label,
                     start_ts,
                     SettingsCoins.quote_coin(),
-                    10000,
+                    50000,
                 )
 
                 # Если len(candles) то свеча однозначно не полная и пересчитывать не надо
@@ -433,104 +407,7 @@ class Servise:
         }
 
     
-    def for_ai(self, table_name: Coins, time_frame: Timeframe, limit: int=500000, window_size:int=60, horizon:int=1):
 
-        query = f""" SELECT ts, o, h, l, c,
-                vol, volCcy, volCcyQuote,
-                ma50, ma200, ema12, ema26,
-                macd, macd_signal, rsi14, macd_histogram,
-                stochastic_k, stochastic_d
-            FROM {table_name.value}
-                    where timeFrame=%s and ts>=%s
-                    ORDER BY ts ASC
-                    limit %s;
-            """
-        params = (time_frame.label, 0, limit)
-        rows = self.db.query_to_bd(query, params)
-
-        columns = [
-            'ts', 'o', 'h', 'l', 'c',
-            'vol', 'volCcy', 'volCcyQuote',
-            'ma50', 'ma200', 'ema12', 'ema26',
-            'macd', 'macd_signal', 'rsi14', 'macd_histogram',
-            'stochastic_k', 'stochastic_d'
-        ]
-
-        df = pd.DataFrame(rows, columns=columns)
-
-        # Целевая — следующая цена закрытия
-        df['target'] = df['c'].shift(-horizon)
-        df.dropna(inplace=True)
-
-        features = df.drop(columns=['ts', 'target'])
-
-        feature_scaler = MinMaxScaler()
-        target_scaler = MinMaxScaler()
-
-        features_scaled = feature_scaler.fit_transform(features)
-        target_scaled = target_scaler.fit_transform(df[['target']])
-
-        def create_sequences(X, y, window_size, horizon):
-            Xs, ys = [], []
-            for i in range(len(X) - window_size - horizon + 1):
-                Xs.append(X[i:(i + window_size)])
-                ys.append(y[i + window_size + horizon - 1])
-            return np.array(Xs), np.array(ys)
-
-        # window_size = 60
-        X_lstm, y_lstm = create_sequences(features_scaled, target_scaled, window_size, horizon)
-
-        split_idx = int(0.8 * len(X_lstm))
-        X_train, X_test = X_lstm[:split_idx], X_lstm[split_idx:]
-        y_train, y_test = y_lstm[:split_idx], y_lstm[split_idx:]
-
-        model = Sequential([
-            LSTM(64, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=False),
-            Dense(32, activation='relu'),
-            Dense(1)
-        ])
-
-        model.compile(optimizer=Adam(learning_rate=0.001), loss='mse')
-
-        early_stop = EarlyStopping(
-            monitor='val_loss',
-            patience=3,
-            restore_best_weights=True
-        )
-
-        history = model.fit(
-            X_train, y_train,
-            epochs=50,
-            batch_size=64,
-            validation_data=(X_test, y_test),
-            callbacks=[early_stop],
-            verbose=1
-        )
-
-        loss = model.evaluate(X_test, y_test)
-        print(f'Final loss (MSE) on test set: {loss}')
-
-        model.save('lstm_model.h5')
-
-        # Визуализация прогресса обучения
-        plt.figure(figsize=(8, 5))
-        plt.plot(history.history['loss'], label='Train Loss')
-        plt.plot(history.history['val_loss'], label='Validation Loss')
-        plt.title('Training and Validation Loss Over Epochs')
-        plt.xlabel('Epoch')
-        plt.ylabel('Mean Squared Error (MSE)')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-
-        joblib.dump(feature_scaler, 'feature_scaler.save')
-        joblib.dump(target_scaler, 'target_scaler.save')
-
-        return model, feature_scaler, target_scaler
-    
-
-#     from tensorflow.keras.models import load_model
-# import joblib
 
 
 
