@@ -64,6 +64,7 @@ while 1:
             1 - Узнать прогноз
             2 - Обучить модель
             3 - Обновить таблицу
+            4 - Начать эксперимент по обучению с разными характеристиками
             8 - Показать колличество записей по таймфреймам в БД
             9 - Начать вычитку новой базы данных, агрегацию и расчет индикаторов
             0 - Выход
@@ -75,6 +76,7 @@ while 1:
         print("⚠️ Пожалуйста, введите число.")
         continue
 
+    # button =4
     match button:
         case 1:
             run_servis.load_model_and_scalers()
@@ -104,6 +106,9 @@ while 1:
             run_servis.calculation_of_indicators(
                 Coins.FET
             )  # расчет индикаторов по всем таймфреймам
+        case 4: 
+            # run_servis.ai_expirement_predictions()
+            run_servis.ai_expirement()
         case 8:
             run_servis.repord_db(Coins.FET)
         case 9:

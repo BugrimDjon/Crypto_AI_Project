@@ -1,6 +1,7 @@
 import os
 import pandas as pd
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import mean_absolute_error
 from datetime import datetime
 import matplotlib.pyplot as plt
 
@@ -17,17 +18,18 @@ class ExperimentManager:
     def _init_log(self):
         df = pd.DataFrame(columns=[
             "timestamp", "window_size", "horizon", "epochs",
-            "loss", "mae", "rmse", "model_path", "scaler_path"
+            "loss","val_loss", "mae", "rmse", "model_path", "scaler_path","learning_rate", "dropout", "neyro"
         ])
         df.to_csv(self.results_file, index=False)
 
-    def run_experiment(self, table_name, timeframe, window_size, horizon, epochs=20):
-        model_name = f"model_ws{window_size}_hz{horizon}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    def run_experiment(self, table_name, timeframe, window_size, horizon,
+                       epochs=20, learning_rate=0.001, dropout=0.2, neyro=64):
+        model_name = f"model_ws{window_size}_hz{horizon}_le_ra{learning_rate}_dr{dropout}_ney{neyro}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         model_path = f"models/{model_name}.h5"
         scaler_path = f"scalers/{model_name}_scalers.pkl"
-
+        
         # Обучение
-        model, feature_scaler, target_scaler, y_true, y_pred = self.ai_service.for_ai(
+        model, feature_scaler, target_scaler, y_true, y_pred = self.ai_service.train_model_experiment(
             table_name=table_name,
             time_frame=timeframe,
             window_size=window_size,
@@ -35,25 +37,37 @@ class ExperimentManager:
             epochs=epochs,
             model_path=model_path,
             scaler_path=scaler_path,
-            return_predictions=True
+            return_predictions=True,
+            learning_rate=learning_rate,        # регулируем
+            dropout=dropout,                 # регулируем
+            neyro=neyro                   # регулируем
         )
 
         # Метрики
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = mean_squared_error(y_true, y_pred, squared=False)
+        # mae = mean_absolute_error(y_true, y_pred)
+        # print(">>> y_true[0]:", y_true[0], "type:", type(y_true[0]))
+        # print(">>> y_pred[0]:", y_pred[0], "type:", type(y_pred[0]))
+        # rmse = sklearn_mse(y_true, y_pred, squared=False)
+
+
+        # rmse = sklearn_mse(y_true.ravel(), y_pred.ravel(), squared=False)
+        mae = mean_absolute_error(y_true.ravel(), y_pred.ravel())
+
+        rmse = root_mean_squared_error(y_true.ravel(), y_pred.ravel())
+
 
         # Логирование
-        self._log_result(window_size, horizon, epochs, model_path, scaler_path, model.history.history['loss'][-1], mae, rmse)
+        self._log_result(window_size, horizon, epochs, model_path, scaler_path, model.history.history['loss'][-1],model.history.history['val_loss'][-1], mae, rmse, learning_rate, dropout, neyro)
 
         print(f"✅ Модель сохранена: {model_path}")
         print(f"📊 MAE: {mae:.6f}, RMSE: {rmse:.6f}")
         return mae, rmse
 
-    def _log_result(self, window_size, horizon, epochs, model_path, scaler_path, loss, mae, rmse):
+    def _log_result(self, window_size, horizon, epochs, model_path, scaler_path, loss,val_loss, mae, rmse, learning_rate, dropout, neyro):
         df = pd.read_csv(self.results_file)
         df.loc[len(df)] = [
             datetime.now(), window_size, horizon, epochs,
-            loss, mae, rmse, model_path, scaler_path
+            loss,val_loss, mae, rmse, model_path, scaler_path, learning_rate, dropout, neyro
         ]
         df.to_csv(self.results_file, index=False)
 

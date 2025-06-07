@@ -1,93 +1,75 @@
+Методичка по подбору параметров модели (гиперпараметров)
+1. Понимание гиперпараметров
+Hyperparameter Tuning Guide (Google ML Crash Course)
+https://developers.google.com/machine-learning/glossary#hyperparameter_tuning
 
-3. Функция агрегирования 1m свечей в N-минутные свечи (например, 5m)
-def aggregate_candles(candles, interval_minutes):
-    """
-    Агрегирует список 1m свечей в свечи с заданным таймфреймом.
-    Предполагается, что candles упорядочены по ts по возрастанию.
-    """
-    aggregated = []
-    interval_ms = interval_minutes * 60 * 1000
+Основные гиперпараметры для нейросетей:
 
-    if not candles:
-        return aggregated
+learning_rate
 
-    group = []
-    current_group_start = candles[0]['ts'] - (candles[0]['ts'] % interval_ms)
+batch_size
 
-    for candle in candles:
-        candle_start = candle['ts'] - (candle['ts'] % interval_ms)
-        if candle_start != current_group_start:
-            # Собираем свечу из группы
-            aggregated.append(aggregate_group(group, current_group_start))
-            group = []
-            current_group_start = candle_start
-        group.append(candle)
+epochs
 
-    # Добавить последнюю группу
-    if group:
-        aggregated.append(aggregate_group(group, current_group_start))
+dropout_rate
 
-    return aggregated
+число слоёв и нейронов
 
-def aggregate_group(group, group_start_ts):
-    """
-    Превращает список 1m свечей в одну свечу с ts = group_start_ts.
-    """
-    o = group[0]['o']
-    c = group[-1]['c']
-    h = max(candle['h'] for candle in group)
-    l = min(candle['l'] for candle in group)
-    vol = sum(candle['vol'] for candle in group)
-    volCcy = sum(candle['volCcy'] for candle in group)
-    volCcyQuote = sum(candle['volCcyQuote'] for candle in group)
-    confirm = 1  # можно поставить 1, т.к. свеча собрана из готовых
-    timeFrame = f"{len(group)}m"
-    baseCoin = group[0]['baseCoin']
+функции активации
 
-    return {
-        'ts': group_start_ts,
-        'o': o,
-        'h': h,
-        'l': l,
-        'c': c,
-        'vol': vol,
-        'volCcy': volCcy,
-        'volCcyQuote': volCcyQuote,
-        'confirm': confirm,
-        'timeFrame': timeFrame,
-        'baseCoin': baseCoin,
-        # Можно оставить остальные индикаторы пустыми (None)
-        'ma50': None,
-        'ma200': None,
-        'ema12': None,
-        'ema26': None,
-        'macd': None,
-        'macd_signal': None,
-        'macd_histogram': None,
-        'rsi14': None,
-        'stochastic_k': None,
-        'stochastic_d': None,
-    }
-4. Пример использования в вашем сервисе
-python
-Копировать
-Редактировать
-def recalc_timeframe(self, baseCoin: from config.SettingsCoins import SettingsCoins,
-                     from_tf: Timeframe, to_tf: Timeframe, interval_minutes: int):
-    # Получаем максимальный ts для нужного таймфрейма
-    last_ts = self.db.get_max_timestamp(timeFrame=to_tf, baseCoin=baseCoin)
-    if last_ts is None:
-        # Если данных нет, возьмём минимум по from_tf (например, 1m)
-        candles = self.db.fetch_candles_from_ts(timeFrame=from_tf, baseCoin=baseCoin, from_ts=0)
-    else:
-        # Начинаем с ts следующей свечи
-        start_ts = last_ts + interval_minutes * 60 * 1000
-        candles = self.db.fetch_candles_from_ts(timeFrame=from_tf, baseCoin=baseCoin, from_ts=start_ts)
-    
-    # Аггрегируем
-    aggregated_candles = aggregate_candles(candles, interval_minutes=interval_minutes)
+оптимизатор
 
-    # Вставляем обратно
-    self.db.insert_many_candles(aggregated_candles, name_table='fet_data')
+2. Стратегии поиска оптимальных параметров
+Grid Search — полный перебор всех комбинаций (медленно, но наглядно).
 
-    print(f"Пересчитано {len(aggregated_candles)} свечей с {from_tf} в {to_tf}")
+Random Search — случайный перебор, быстрее и часто не хуже.
+
+Bayesian Optimization — умный поиск с учётом предыдущих результатов.
+
+Hyperband, Genetic Algorithms — более продвинутые методы.
+
+3. Процесс подбора
+Начать с базовых параметров — взять рекомендованные по умолчанию (например, learning_rate=0.001, batch_size=32, dropout=0.2).
+
+Подбирать learning_rate, т.к. от него сильно зависит обучение.
+
+Оптимизировать размер окна (window_size) — сколько времени брать на вход.
+
+Регуляризацию (dropout, L2) подбирать для борьбы с переобучением.
+
+Размер модели (число нейронов, слоёв) увеличивать, если модель недообучается.
+
+Использовать валидацию и метрики качества (например, val_loss).
+
+Применять early stopping — чтобы остановить обучение при переобучении.
+
+Повторять цикл.
+
+4. Ресурсы и статьи
+Practical Guide to Hyperparameter Tuning for Deep Learning
+
+Hyperparameter Optimization — Coursera
+
+Книга "Deep Learning" Ian Goodfellow, Yoshua Bengio, Aaron Courville — глава про обучение и регуляризацию.
+
+Fast.ai — Lesson 2: Fine-tuning and learning rates — практические советы.
+
+5. Специфика для временных рядов
+Временные ряды требуют внимательности к окну (window_size) и горизонту (horizon), так как они задают структуру входа и выхода.
+
+Важна последовательная разбиение данных (train/validation/test) без случайного перемешивания.
+
+Можно экспериментировать с разным масштабированием данных (нормализация, стандартизация).
+
+Хорошо помогает визуализация результатов — сравнение предсказаний и реальных значений.
+
+6. Советы для новичков
+Начни с простого: маленькая модель, базовые параметры.
+
+Измени один параметр, посмотри, как изменился val_loss и метрики.
+
+Используй автоматические инструменты (например, Keras Tuner, Optuna).
+
+Не забывай про seed для воспроизводимости.
+
+Держи лог экспериментов — что и как менял.

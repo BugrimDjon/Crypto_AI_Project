@@ -20,6 +20,7 @@ from enums.AfterBefore import AfterBefore
 from logger.context_logger import ContextLogger
 from AI.AIModelService import AIModelService
 from datetime import datetime
+from AI.ExperimentManager import ExperimentManager
 
 import pandas as pd
 import ta
@@ -40,35 +41,79 @@ logging.basicConfig(
 class Servise:
     def __init__(self, db: Database) -> None:
         self.db = db
-        self.ai_service=AIModelService(db)
-
-
+        self.ai_service = AIModelService(db)
 
     def load_model_and_scalers(self):
         self.ai_service.load_model_and_scalers()
 
     def predict_price(self, table_name: Coins, time_frame: Timeframe) -> float:
-        return(self.ai_service.predict_price(table_name, time_frame))
-    
-    def train_model(self, table_name: Coins, time_frame: Timeframe, limit: int=500000, window_size:int=60, horizon:int=1):
-        return(self.ai_service.train_model(table_name, time_frame, limit, window_size, horizon))
+        return self.ai_service.predict_price(table_name, time_frame)
 
+    def train_model(
+        self,
+        table_name: Coins,
+        time_frame: Timeframe,
+        limit: int = 500000,
+        window_size: int = 60,
+        horizon: int = 1,
+    ):
+        return self.ai_service.train_model(
+            table_name, time_frame, limit, window_size, horizon
+        )
 
+    def ai_expirement_predictions(self):
+        self.ai_service.train_model_experiment_where_predictions(
+        table_name = Coins.FET,
+        time_frame = Timeframe._30min,
+        limit = 500000,
+        window_size = 100,
+        horizon = 1,
+        model_path="D:/Project_programming/for_AI/Crypto_AI_Project/expipement/exp2.h5",
+        scaler_path="D:/Project_programming/for_AI/Crypto_AI_Project/expipement/exp2.pkl",
+        return_predictions=True,
+        epochs = 50,
+        learning_rate = 0.0001,
+        dropout = 0.02,
+        neyro = 64,
+        csv_path = "D:/Project_programming/for_AI/Crypto_AI_Project/expipement/predictions2.csv",  # путь для CSV
+    )
 
-    def repord_db(self,table_name:Coins):
-        print (f"Монета {table_name.value}")
+    def ai_expirement(self):
+        manager = ExperimentManager(self.ai_service)
+
+        for window in [30, 60, 90, 120, 150]:
+            for horizon in [1, 3, 5]:
+                for learning_rate in [0.01, 0.005, 0.001, 0.0005, 0.0001]:
+                    for dropout in [0.05, 0.1, 0.2, 0.3]:
+                        for neyro in [32, 64, 128, 256]:
+                            manager.run_experiment(
+                                table_name=Coins.FET,
+                                timeframe=Timeframe._30min,
+                                window_size=window,
+                                horizon=horizon,
+                                epochs=40,
+                                learning_rate=learning_rate,
+                                dropout=dropout,
+                                neyro=neyro,
+                            )
+        manager.plot_results()
+
+    def repord_db(self, table_name: Coins):
+        print(f"Монета {table_name.value}")
         for i in Timeframe:
-            query=f"""SELECT MAX(ts) AS max_ts, 
+            query = f"""SELECT MAX(ts) AS max_ts, 
                     min(ts) AS min_ts,
                     count(ts) as count FROM {table_name.value}
                     where timeFrame=%s;"""
             params = (i.label,)
             request = self.db.query_to_bd(query, params)
-            dt_max=datetime.fromtimestamp(request[0]["max_ts"] / 1000)
-            dt_min=datetime.fromtimestamp(request[0]["min_ts"] / 1000)
-            print(f"Таймфрейм {i.label}   начало {dt_min}         конец {dt_min}      колличество записей {request[0]["count"]}")
+            dt_max = datetime.fromtimestamp(request[0]["max_ts"] / 1000)
+            dt_min = datetime.fromtimestamp(request[0]["min_ts"] / 1000)
+            print(
+                f"Таймфрейм {i.label}   начало {dt_min}         конец {dt_min}      колличество записей {request[0]["count"]}"
+            )
 
-    def first_load_candles(self, coin: Coins, length_in_hours: int=365 * 24):
+    def first_load_candles(self, coin: Coins, length_in_hours: int = 365 * 24):
 
         TimControl.frequency_limitation(10)
         fetcher = OkxCandlesFetcher(instId=coin.value, bar=Timeframe._1min)
@@ -128,7 +173,7 @@ class Servise:
 
         if start_time > stop_time:
             start_time, stop_time = stop_time, start_time
-        delta_candles = (stop_time - start_time) // (time_frame.minutes * 60 * 1000)+1
+        delta_candles = (stop_time - start_time) // (time_frame.minutes * 60 * 1000) + 1
         while delta_candles > 0:
             if delta_candles > 10000:
                 delta_candles = 10000
@@ -164,7 +209,7 @@ class Servise:
                         else:
                             number_of_candles = number_of_passes
                             limit = number_of_candles - 1
-                        
+
                         data_candles = fetcher.fetch_candles(
                             limit=limit,
                             afterBefore=AfterBefore.After,
@@ -320,10 +365,10 @@ class Servise:
                 self.db.insert_many_indikator(result_to_save, tableName.value)
 
     def recalc_timeframe(self, baseCoin: Coins, from_tf: Timeframe, to_tf: Timeframe):
-        end_cikle: bool=False
-        caunter=0
-        number=0
-        while end_cikle==False:
+        end_cikle: bool = False
+        caunter = 0
+        number = 0
+        while end_cikle == False:
             interval_minutes = to_tf.minutes / from_tf.minutes
             if not interval_minutes.is_integer():
                 print("Входные таймфреймы не совместимы")
@@ -331,7 +376,9 @@ class Servise:
             interval_minutes = int(interval_minutes)
             # Получаем максимальный ts для нужного таймфрейма, самый свежий ts когда был рассчитан данный таймфрейм
             last_ts = self.db.get_max_timestamp(
-                baseCoin.value, timeFrame=to_tf.label, quoteCoin=SettingsCoins.quote_coin()
+                baseCoin.value,
+                timeFrame=to_tf.label,
+                quoteCoin=SettingsCoins.quote_coin(),
             )
 
             if last_ts is None:
@@ -359,19 +406,20 @@ class Servise:
                 aggregated_candles = Database.aggregate_candles(candles, to_tf)
 
                 # Вставляем обратно
-                self.db.insert_many_candles(aggregated_candles, name_table=baseCoin.value)
-                number+=1
-                print("Проход - "+str(number))
-                caunter +=len(aggregated_candles)
-                if (len(aggregated_candles)==0):
+                self.db.insert_many_candles(
+                    aggregated_candles, name_table=baseCoin.value
+                )
+                number += 1
+                print("Проход - " + str(number))
+                caunter += len(aggregated_candles)
+                if len(aggregated_candles) == 0:
                     print(f"Пересчитано {caunter} свечей с {from_tf} в {to_tf}")
                     return caunter
 
             else:
                 print(f"Пересчитано {caunter} свечей с {from_tf} в {to_tf}")
-                end_cikle=True
+                end_cikle = True
                 return caunter
-            
 
     def data_for_update(self, table_name=Coins):
         query = f"""
@@ -405,9 +453,3 @@ class Servise:
             "time_in_database": time_in_database,
             "current_time_on_the_exchange": data[0]["ts"],
         }
-
-    
-
-
-
-
