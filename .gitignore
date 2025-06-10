@@ -26,3 +26,7 @@ data/
 
 # Environment files
 .env
+
+models/
+scalers/
+results/

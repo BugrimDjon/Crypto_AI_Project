@@ -23,7 +23,28 @@ from services import okx_candles
 from config.SettingsCoins import SettingsCoins
 from services.service import Servise
 from AI.AIModelService import AIModelService
+from datetime import datetime
+import tzlocal
 
+
+
+def clear_console():
+    os.system("cls" if os.name == "nt" else "clear")
+
+clear_console()
+# открываем соединение с бд
+db = Database()
+db.connect()
+# передача открыбой бд в мнтод
+run_servis = Servise(db)
+
+
+
+
+
+
+
+# **************************НАЧАЛО ГОТОВО
 
 def agregate_table(table_name: Coins):
     print("********************* Расчет 5 минутных таймфреймов************")
@@ -44,16 +65,6 @@ def agregate_table(table_name: Coins):
     len = run_servis.recalc_timeframe(table_name, Timeframe._1day, Timeframe._1week)
 
 
-def clear_console():
-    os.system("cls" if os.name == "nt" else "clear")
-
-
-clear_console()
-# открываем соединение с бд
-db = Database()
-db.connect()
-# передача открыбой бд в мнтод
-run_servis = Servise(db)
 
 
 while 1:
@@ -70,6 +81,9 @@ while 1:
             0 - Выход
             *******************
 """
+
+    
+
     try:
         button = int(input(menu).strip())
     except ValueError:
@@ -79,9 +93,15 @@ while 1:
     # button =4
     match button:
         case 1:
-            run_servis.load_model_and_scalers()
-            price_pred = run_servis.predict_price(Coins.FET, Timeframe._30min)
-            print(f"📈 Прогноз цены закрытия: {price_pred:.6f}")
+            # run_servis.load_model_and_scalers()
+            # price_pred = run_servis.predict_price(Coins.FET, Timeframe._30min)
+            # print(f"📈 Прогноз цены закрытия: {price_pred:.6f}")
+            # for i in range(100):
+            # i=1
+            # star_time=1749241800000+i*30*1000*60    
+            # run_servis.make_forecast(str(star_time))
+            run_servis.make_forecast_on_working_models()
+
         case 2:
             confirm = input("⚠️ Подтвердите обучение модели (y/n): ").strip().lower()
             if confirm == "y":
@@ -106,7 +126,7 @@ while 1:
             run_servis.calculation_of_indicators(
                 Coins.FET
             )  # расчет индикаторов по всем таймфреймам
-        case 4: 
+        case 4:
             # run_servis.ai_expirement_predictions()
             run_servis.ai_expirement()
         case 8:
@@ -128,6 +148,14 @@ while 1:
         case _:
             print("❌ Неизвестная команда. Попробуйте снова.")
             break
+
+
+
+# **************************КОНЕЦ ГОТОВО
+
+# зкрываем соединение с бд
+db.close()
+
 
 
 #  run_servis.first_load_candles(Coins.FET) # готово
@@ -173,5 +201,4 @@ while 1:
 
 
 # print(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])  # обрезаем до миллисекунд
-# зкрываем соединение с бд
-db.close()
+

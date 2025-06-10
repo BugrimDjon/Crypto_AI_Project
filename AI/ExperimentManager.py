@@ -24,7 +24,7 @@ class ExperimentManager:
 
     def run_experiment(self, table_name, timeframe, window_size, horizon,
                        epochs=20, learning_rate=0.001, dropout=0.2, neyro=64):
-        model_name = f"model_ws{window_size}_hz{horizon}_le_ra{learning_rate}_dr{dropout}_ney{neyro}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        model_name = f"{timeframe.name}_ws{window_size}_hz{horizon}_le_ra{learning_rate}_dr{dropout}_ney{neyro}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         model_path = f"models/{model_name}.h5"
         scaler_path = f"scalers/{model_name}_scalers.pkl"
         

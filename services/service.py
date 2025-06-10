@@ -21,11 +21,17 @@ from logger.context_logger import ContextLogger
 from AI.AIModelService import AIModelService
 from datetime import datetime
 from AI.ExperimentManager import ExperimentManager
+from collections import defaultdict
+from ModelManager.ModelManager import ModelManager
+from datetime import datetime
+import tzlocal
+from datetime import timedelta
 
 import pandas as pd
 import ta
 import json
 import logging
+import os
 
 # Настройка логирования
 logging.basicConfig(
@@ -42,6 +48,269 @@ class Servise:
     def __init__(self, db: Database) -> None:
         self.db = db
         self.ai_service = AIModelService(db)
+
+
+    def update_y_true(csv_path: str, actual_prices: pd.DataFrame):
+        """
+        Обновляет y_true, CSV-файле с прогнозами на основе актуальных данных.
+
+        :param csv_path: Путь к CSV с прогнозами.
+        :param actual_prices: DataFrame с актуальными значениями.
+            Должен содержать: ['ts', 'c'] — метка времени и цена закрытия.
+        """
+        # Загрузка текущих прогнозов
+        df = pd.read_csv(csv_path, parse_dates=['target_ts', 'eval_time'])
+
+        # Для удобства понижаем регистр и удаляем лишнее
+        actual_prices = actual_prices[['ts', 'c']].dropna().copy()
+        actual_prices.columns = ['ts', 'y_true']
+
+        updated_rows = 0
+
+        # Пройдём по всем строкам, где y_true ещё не заполнен
+        for i, row in df[df['y_true'].isna()].iterrows():
+            target_ts = pd.to_datetime(row['target_ts'])
+
+            # Найти в actual_prices нужную точку
+            y_row = actual_prices[actual_prices['ts'] == target_ts]
+
+            if not y_row.empty:
+                y_true = y_row['y_true'].values[0]
+                y_pred = row['y_pred']
+
+                df.at[i, 'y_true'] = y_true
+                updated_rows += 1
+
+        # Сохраняем обратно
+        df.to_csv(csv_path, index=False)
+        print(f"Обновлено строк: {updated_rows}")
+
+    def make_forecast_on_working_models(self):
+        manager = ModelManager()
+
+        table_name = Coins.FET
+        time_frame= Timeframe._1min
+        model_results = []
+
+        model_results_df = manager.list_models_out_df()
+        # Преобразуем строковые значения в Timeframe
+        model_results_df["timeframe_enum"] = model_results_df["timeframe"].apply(lambda x: Timeframe[x])
+
+        # Теперь ты можешь получить количество минут:
+        model_results_df["tf_minutes"] = model_results_df["timeframe_enum"].apply(lambda tf: tf.minutes)
+
+        # Или метку:
+        model_results_df["tf_label"] = model_results_df["timeframe_enum"].apply(lambda tf: tf.label)
+
+        model_results_df.sort_values(by="tf_minutes", ascending=True, inplace=True)
+        limit=int(model_results_df["window_size"].max())
+        for id_row, row in model_results_df.iterrows():
+            if id_row==0 or time_frame!=row["timeframe_enum"]:
+                time_frame=row["timeframe_enum"]
+
+                query = f""" SELECT * FROM {table_name.value}
+                            WHERE timeFrame=%s
+                            ORDER BY ts DESC
+                            LIMIT %s;"""
+                params = (time_frame.label,limit)
+            
+                rows = self.db.query_to_bd(query, params)
+
+                columns = [
+                    "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote",
+                    "ma50", "ma200", "ema12", "ema26", "macd", "macd_signal",
+                    "rsi14", "macd_histogram", "stochastic_k", "stochastic_d"
+                ]
+                df = pd.DataFrame(rows, columns=columns)
+                df = df.iloc[::-1]  # от старых к новым
+
+                # actual_df = df[["ts", "c"]].copy()
+                # actual_df.columns = ["ts", "y_true"]
+                # actual_df["ts"] = pd.to_datetime(actual_df["ts"])
+
+            len_ws=row["window_size"]
+            if len(df) < len_ws:
+                print(f"Недостаточно данных для модели: {row['model_path']}")
+                continue
+            X_input=df[columns[1:]].tail(len_ws).values
+
+            model_path=row["model_path"]
+            scaler_path=row["scaler_path"]
+
+            y_pred = manager.predict_on_working_models(X_input,model_path,scaler_path)
+
+            horizon=row["horizon"]
+            data_forcast=pd.to_datetime(df.iloc[-1]["ts"],unit="ms")
+            data_forcast=data_forcast.tz_localize('UTC').tz_convert(tzlocal.get_localzone())
+            data_forcast+=timedelta(minutes=row["tf_minutes"] * (horizon + 1))
+            model_results.append(
+            {"rezult":f"""Горизонт - {horizon}        таймфрейм - {time_frame.label}        Прогноз на дату {data_forcast} равен {float(y_pred[0])}""",}
+            )
+        
+        for i in model_results:
+            print(i["rezult"])
+           
+
+       
+
+
+    def make_forecast(self, ts: str):
+    
+        manager = ModelManager()
+
+        table_name = Coins.FET
+        time_frame = Timeframe._30min
+
+        query = f""" SELECT * FROM {table_name.value}
+                    WHERE timeFrame=%s and ts<=%s
+                    ORDER BY ts DESC
+                    LIMIT 100;"""
+        params = (time_frame.label,ts)
+        
+        rows = self.db.query_to_bd(query, params)
+
+        columns = [
+            "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote",
+            "ma50", "ma200", "ema12", "ema26", "macd", "macd_signal",
+            "rsi14", "macd_histogram", "stochastic_k", "stochastic_d"
+        ]
+        df = pd.DataFrame(rows, columns=columns)
+        df = df.iloc[::-1]  # от старых к новым
+
+        actual_df = df[["ts", "c"]].copy()
+        actual_df.columns = ["ts", "y_true"]
+        # actual_df["ts"] = pd.to_datetime(actual_df["ts"])
+
+        ts = df["ts"].iloc[-1]
+        timeframe_minutes = int(time_frame.label[:-1])
+
+        prepared_inputs = {
+            ws: df[columns[1:]].tail(ws).values
+            for ws in [30, 60, 90] if len(df) >= ws
+        }
+
+        model_results = []
+
+        for x in manager.list_models():
+            window_size = x["window_size"]
+            horizon = x["horizon"]
+            timeframe = x["timeframe"]
+            filename = x["filename"]
+
+            if window_size not in prepared_inputs:
+                print(f"Пропущено: недостаточно данных для window_size={window_size}")
+                continue
+
+            X_input = prepared_inputs[window_size]
+            y_pred = manager.predict(X_input, timeframe, window_size, horizon, filename)
+
+            model_results.append({
+                "ts": ts,
+                "target_ts": ts +horizon*30*60*1000, 
+                "horizon": horizon,
+                "window_size": window_size,
+                "y_pred": y_pred[0],
+                "y_true": None,
+                "model_id": filename,
+                "eval_time": datetime.now()
+            })
+
+        # Загрузка существующего CSV
+        csv_path = "D:/Project_programming/for_AI/Crypto_AI_Project/results/forecast_eval_history.csv"
+        df_new = pd.DataFrame(model_results)
+        
+
+        if os.path.exists(csv_path):
+            df_old = pd.read_csv(csv_path)
+
+            df_combined = pd.concat([df_old, df_new], ignore_index=True)
+
+            # Обновляем y_true, если target_ts совпадает с ts в actual_df
+            actual_map = dict(zip(actual_df["ts"], actual_df["y_true"]))
+
+            updated_count = 0
+            for i, row in df_combined[df_combined["y_true"].isna()].iterrows():
+                if row["target_ts"] in actual_map:
+                    df_combined.at[i, "y_true"] = actual_map[row["target_ts"]]
+                    updated_count += 1
+            print(f"Обновлено строк: {updated_count}")
+        else:
+            df_combined = df_new
+
+        df_combined.to_csv(csv_path, index=False)
+        print(f"Данные добавлены/обновлены в файле: {csv_path}")
+
+
+
+
+    def make_forecast_old(self):
+        manager = ModelManager()
+
+        table_name = Coins.FET
+        time_frame = Timeframe._30min
+
+        query = f""" SELECT * FROM {table_name.value}
+                    WHERE timeFrame=%s
+                    ORDER BY ts DESC
+                    LIMIT 90;"""
+        params = (time_frame.label,)
+        
+        rows = self.db.query_to_bd(query, params)
+
+        columns = [
+            "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote",
+            "ma50", "ma200", "ema12", "ema26", "macd", "macd_signal",
+            "rsi14", "macd_histogram", "stochastic_k", "stochastic_d"
+        ]
+        df = pd.DataFrame(rows, columns=columns)
+        df = df.iloc[::-1]  # от старых к новым
+
+        max_ts = df["ts"].max()  # базовая точка прогнозов
+
+        # Подготовим входы по каждому window_size
+        prepared_inputs = {
+            ws: df[columns[1:]].tail(ws).values
+            for ws in [30, 60, 90] if len(df) >= ws
+        }
+
+        results = []
+        timeframe_minutes = int(time_frame.label[:-1])  # '30m' → 30
+
+        ts = df["ts"].iloc[-1]  # максимальный ts
+
+        for x in manager.list_models():
+            window_size = x["window_size"]
+            horizon = x["horizon"]
+            timeframe = x["timeframe"]
+            key = x["key"]
+            filename=x["filename"]
+
+            if window_size not in prepared_inputs:
+                print(f"Пропущено: недостаточно данных для window_size={window_size}")
+                continue
+
+            X_input = prepared_inputs[window_size]
+            y_pred = manager.predict(X_input, timeframe, window_size, horizon,x["filename"])
+            # print(y_pred)
+            label = f"+{horizon * timeframe_minutes}min"
+
+            results.append({
+                "ts": ts,
+                label: y_pred[0]  # если y_pred — массив из одного элемента
+            })
+
+        # Построить DataFrame
+        df_result = pd.DataFrame(results).fillna("")
+
+        # Переупорядочим столбцы: сначала ts, потом по horizon
+        cols = ["ts"] + sorted([col for col in df_result.columns if col != "ts"], key=lambda x: int(x[1:-3]))
+        df_result = df_result[cols]
+
+        print(df_result)
+
+
+
+
 
     def load_model_and_scalers(self):
         self.ai_service.load_model_and_scalers()
@@ -60,6 +329,11 @@ class Servise:
         return self.ai_service.train_model(
             table_name, time_frame, limit, window_size, horizon
         )
+    
+
+
+            
+
 
     def ai_expirement_predictions(self):
         self.ai_service.train_model_experiment_where_predictions(
@@ -80,18 +354,17 @@ class Servise:
 
     def ai_expirement(self):
         manager = ExperimentManager(self.ai_service)
-
-        for window in [30, 60, 90, 120, 150]:
-            for horizon in [1, 3, 5]:
+        for window in [5, 10, 20]:#[15, 30, 45]:
+            for horizon in [1, 2]:
                 for learning_rate in [0.01, 0.005, 0.001, 0.0005, 0.0001]:
-                    for dropout in [0.05, 0.1, 0.2, 0.3]:
-                        for neyro in [32, 64, 128, 256]:
+                    for dropout in [0.01, 0.05, 0.1, 0.15]:
+                        for neyro in [64,128, 256]:
                             manager.run_experiment(
                                 table_name=Coins.FET,
-                                timeframe=Timeframe._30min,
+                                timeframe=Timeframe._4hour,
                                 window_size=window,
                                 horizon=horizon,
-                                epochs=40,
+                                epochs=50,
                                 learning_rate=learning_rate,
                                 dropout=dropout,
                                 neyro=neyro,
