@@ -400,17 +400,17 @@ class Servise:
         # tf.config.threading.set_inter_op_parallelism_threads(1)
         counter=0
         manager = ExperimentManager(self.ai_service)
-        for window in  [15, 20, 30, 45]:    #[10, 20, 30, 45]:
-            for horizon in [1, 2]:   #[1, 2,3]
-                for learning_rate in [0.0005, 0.0001]: #[0.01, 0.005, 0.001, 0.0005, 0.0001]
-                    for dropout in [0.005, 0.01, 0.05]:  #[0.01, 0.05, 0.1, 0.15]
-                        for neyro in [64,128, 256]:     #[128, 256]:
+        for window in [10, 20, 30, 45]: #[30, 45]
+            for horizon in [1, 2, 3]:   #[1, 2]
+                for learning_rate in [0.01, 0.005, 0.001, 0.0005, 0.0001]: #[0.0005, 0.0001]
+                    for dropout in [0.01, 0.05, 0.1, 0.15]: #[0.01, 0.05]:
+                        for neyro in [32, 64,128, 256]:     #[128, 256]:
                             counter+=1
-                            if counter<82:
+                            if (counter<0):  #613
                                 continue
                             manager.run_experiment(
                                 table_name=Coins.FET,
-                                timeframe=Timeframe._4hour,
+                                timeframe=Timeframe._1day,
                                 window_size=window,
                                 horizon=horizon,
                                 epochs=50,
