@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping
 import joblib
 from tensorflow.keras.models import load_model, Sequential
-
 from enums.coins import Coins
 from database.db import Database
 from services.okx_candles import OkxCandlesFetcher
@@ -26,6 +25,11 @@ from ModelManager.ModelManager import ModelManager
 from datetime import datetime
 import tzlocal
 from datetime import timedelta
+from Reports.reports import Reports
+from MathCandles.mathCandles import MathCandles
+import tensorflow as tf
+import time
+
 
 import pandas as pd
 import ta
@@ -48,6 +52,7 @@ class Servise:
     def __init__(self, db: Database) -> None:
         self.db = db
         self.ai_service = AIModelService(db)
+        self.reports_servise=Reports(db)
 
 
     def update_y_true(csv_path: str, actual_prices: pd.DataFrame):
@@ -87,6 +92,7 @@ class Servise:
 
     def make_forecast_on_working_models(self):
         manager = ModelManager()
+        math_candle=MathCandles()
 
         table_name = Coins.FET
         time_frame= Timeframe._1min
@@ -104,51 +110,88 @@ class Servise:
 
         model_results_df.sort_values(by="tf_minutes", ascending=True, inplace=True)
         limit=int(model_results_df["window_size"].max())
-        for id_row, row in model_results_df.iterrows():
-            if id_row==0 or time_frame!=row["timeframe_enum"]:
-                time_frame=row["timeframe_enum"]
 
-                query = f""" SELECT * FROM {table_name.value}
+        limit=int(((model_results_df["window_size"]+201)*model_results_df["tf_minutes"]).max())
+        query = f""" SELECT * FROM {table_name.value}
                             WHERE timeFrame=%s
                             ORDER BY ts DESC
                             LIMIT %s;"""
-                params = (time_frame.label,limit)
-            
-                rows = self.db.query_to_bd(query, params)
-
-                columns = [
-                    "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote",
-                    "ma50", "ma200", "ema12", "ema26", "macd", "macd_signal",
-                    "rsi14", "macd_histogram", "stochastic_k", "stochastic_d"
+        params = (Timeframe._1min.label,limit)
+        rows = self.db.query_to_bd(query, params)
+        columns = [
+                    "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote"
                 ]
-                df = pd.DataFrame(rows, columns=columns)
-                df = df.iloc[::-1]  # от старых к новым
+        df_1min = pd.DataFrame(rows, columns=columns)
+        df_1min = df_1min.sort_values("ts").reset_index(drop=True)
+        # Получим 15-мин свечи без смещения
+        # df_15min = math_candle.aggregate_with_offset(df_1min, Timeframe._15min, offset_minutes=0)
+       
+#  if id_row==0 or time_frame!=row["timeframe_enum"]:
+#                 time_frame=row["timeframe_enum"]
 
-                # actual_df = df[["ts", "c"]].copy()
-                # actual_df.columns = ["ts", "y_true"]
-                # actual_df["ts"] = pd.to_datetime(actual_df["ts"])
+#                 query = f""" SELECT * FROM {table_name.value}
+#                             WHERE timeFrame=%s
+#                             ORDER BY ts DESC
+#                             LIMIT %s;"""
+#                 params = (time_frame.label,limit)
+            
+#                 rows = self.db.query_to_bd(query, params)
 
-            len_ws=row["window_size"]
-            if len(df) < len_ws:
-                print(f"Недостаточно данных для модели: {row['model_path']}")
-                continue
-            X_input=df[columns[1:]].tail(len_ws).values
+#                 columns = [
+#                     "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote",
+#                     "ma50", "ma200", "ema12", "ema26", "macd", "macd_signal",
+#                     "rsi14", "macd_histogram", "stochastic_k", "stochastic_d"
+#                 ]
+#                 df = pd.DataFrame(rows, columns=columns)
+#                 df = df.iloc[::-1]  # от старых к новым
+
+
+
+
+
+#                 # actual_df = df[["ts", "c"]].copy()
+#                 # actual_df.columns = ["ts", "y_true"]
+#                 # actual_df["ts"] = pd.to_datetime(actual_df["ts"])
+
+        current_timefreme=Timeframe._1min
+
+        for id_row, row in model_results_df.iterrows():
+            if current_timefreme!=row["timeframe_enum"]:
+                if row["timeframe_enum"].minutes>= 5:
+                    amount=list(range(0,int(row["timeframe_enum"].minutes),5))
+                    current_timefreme=row["timeframe_enum"]
+                    df = math_candle.generate_multi_shift_features(df_1min,row["timeframe_enum"] , amount)
 
             model_path=row["model_path"]
             scaler_path=row["scaler_path"]
+            feature_cols = [col for col in df.columns if col not in ["ts", "offset"]]
+            
 
-            y_pred = manager.predict_on_working_models(X_input,model_path,scaler_path)
+            for i in amount:
+                X_input =df[df["offset"]==i]
+                len_ws=row["window_size"]
+                if len(X_input) < len_ws:
+                    print(f"Недостаточно данных для модели: {row['model_path']}")
+                    continue
+                last_ts = X_input["ts"].iloc[-1]
+                X_input = X_input[feature_cols].tail(len_ws).values
+                y_pred = manager.predict_on_working_models(X_input,model_path,scaler_path)
 
-            horizon=row["horizon"]
-            data_forcast=pd.to_datetime(df.iloc[-1]["ts"],unit="ms")
-            data_forcast=data_forcast.tz_localize('UTC').tz_convert(tzlocal.get_localzone())
-            data_forcast+=timedelta(minutes=row["tf_minutes"] * (horizon + 1))
-            model_results.append(
-            {"rezult":f"""Горизонт - {horizon}        таймфрейм - {time_frame.label}        Прогноз на дату {data_forcast} равен {float(y_pred[0])}""",}
-            )
-        
+                horizon=row["horizon"]
+                data_forcast=pd.to_datetime(last_ts,unit="ms")
+                # data_forcast=data_forcast.tz_localize('UTC').tz_convert(tzlocal.get_localzone())
+                data_forcast+=timedelta(minutes=row["tf_minutes"] * (horizon+1))
+                model_results.append(
+                {"horizon": horizon,
+                "time_frame": time_frame,
+                "data_forcast": data_forcast,
+                "prais": float(y_pred[0]),
+                "model": row["filename"]}
+                )
+        self.reports_servise.report_forecast(model_results)
         for i in model_results:
-            print(i["rezult"])
+            print(f"Горизонт - {i["horizon"]}   таймфрейм - {i["time_frame"].label}   "+
+                  f"прогноз на дату {i["data_forcast"]} равен {i["prais"]}")
            
 
        
@@ -353,12 +396,18 @@ class Servise:
     )
 
     def ai_expirement(self):
+        # tf.config.threading.set_intra_op_parallelism_threads(1)
+        # tf.config.threading.set_inter_op_parallelism_threads(1)
+        counter=0
         manager = ExperimentManager(self.ai_service)
-        for window in [5, 10, 20]:#[15, 30, 45]:
-            for horizon in [1, 2]:
-                for learning_rate in [0.01, 0.005, 0.001, 0.0005, 0.0001]:
-                    for dropout in [0.01, 0.05, 0.1, 0.15]:
-                        for neyro in [64,128, 256]:
+        for window in  [15, 20, 30, 45]:    #[10, 20, 30, 45]:
+            for horizon in [1, 2]:   #[1, 2,3]
+                for learning_rate in [0.0005, 0.0001]: #[0.01, 0.005, 0.001, 0.0005, 0.0001]
+                    for dropout in [0.005, 0.01, 0.05]:  #[0.01, 0.05, 0.1, 0.15]
+                        for neyro in [64,128, 256]:     #[128, 256]:
+                            counter+=1
+                            if counter<82:
+                                continue
                             manager.run_experiment(
                                 table_name=Coins.FET,
                                 timeframe=Timeframe._4hour,

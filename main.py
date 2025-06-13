@@ -1,14 +1,20 @@
 # -*- coding: utf-8 -*-
-
+# Уменьшение потребления CPU потоков
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from tensorflow.keras.optimizers import Adam
+import tensorflow as tf
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+import threading
 import matplotlib.pyplot as plt
 import joblib
 from tensorflow.keras.models import load_model, Sequential
+from Reports.reports import Reports
+from datetime import datetime, timedelta
 
 import time
 from datetime import datetime
@@ -145,6 +151,84 @@ while 1:
         case 0:
             print("👋 Выход из программы.")
             break
+
+        case 11:
+            import traceback
+
+            def background_task():
+                global ai_training_in_progress
+                if ai_training_in_progress:
+                    print("⏸️ Обучение уже идёт, новый процесс не запущен.")
+                    return
+                try:
+                    ai_training_in_progress = True
+                    print("🧠 Фоновое обучение моделей запущено...")
+                    run_servis.ai_expirement()
+                    print("✅ Фоновое обучение завершено.")
+                except Exception as e:
+                    print(f"❌ Ошибка в фоне обучения: {e}")
+                    traceback.print_exc()
+                finally:
+                    ai_training_in_progress = False
+
+
+            def wait_until_next_interval(interval_minutes=5):
+                now = datetime.now()
+                next_minute = (now.minute // interval_minutes + 1) * interval_minutes
+                next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=next_minute)
+                wait_seconds = (next_time - now).total_seconds()
+                time.sleep(wait_seconds)
+
+
+            ai_training_in_progress = False
+
+            try:
+                while True:
+                    print(f"\n🔁 Запуск очередного цикла в: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+                    try:
+                        print("🔄 Обновление данных...")
+                        time_for_update = run_servis.data_for_update(Coins.FET)
+                        err = run_servis.check_sequence_timeframes(
+                            Coins.FET,
+                            Timeframe._1min,
+                            int(time_for_update["time_in_database"]),
+                            int(time_for_update["current_time_on_the_exchange"]),
+                            True,
+                        )
+                        print("✅ Обновление завершено.")
+
+                        print("📊 Агрегация таблиц...")
+                        agregate_table(Coins.FET)
+                        print("✅ Агрегация завершена.")
+
+                        print("📈 Расчет индикаторов...")
+                        run_servis.calculation_of_indicators(Coins.FET)
+                        print("✅ Индикаторы рассчитаны.")
+
+                        print("🤖 Прогнозирование моделей...")
+                        run_servis.make_forecast_on_working_models()
+                        print("✅ Прогноз завершен.")
+
+                        print("🚀 Запуск фонового обучения моделей (клавиша 4)...")
+                        thread = threading.Thread(target=background_task, daemon=True)
+                        thread.start()
+
+                    except Exception as e:
+                        print(f"❌ Ошибка в цикле: {e}")
+                        traceback.print_exc()
+
+                    print("⏳ Ожидание следующего интервала...")
+                    wait_until_next_interval(5)
+
+            except KeyboardInterrupt:
+                print("🛑 Завершено пользователем.")
+            except Exception as e:
+                print(f"❌ Необработанная ошибка в главном цикле: {e}")
+                traceback.print_exc()
+
+
+
         case _:
             print("❌ Неизвестная команда. Попробуйте снова.")
             break
