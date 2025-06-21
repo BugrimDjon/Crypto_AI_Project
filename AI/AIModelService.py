@@ -223,7 +223,7 @@ class AIModelService:
         self,
         table_name: Coins,
         time_frame: Timeframe,
-        limit: int = 500000,
+        limit: int = 1000000,
         window_size: int = 60,
         horizon: int = 1,
         model_path=None,
@@ -233,43 +233,51 @@ class AIModelService:
         learning_rate: float = 0.001,  # регулируем
         dropout: float = 0.2,  # регулируем
         neyro: int = 64,
+        df_ready=None,
+        offset=None
     ):
+        if df_ready is None:
+            query = f""" SELECT ts, o, h, l, c,
+                        vol, volCcy, volCcyQuote,
+                        ma50, ma200, ema12, ema26,
+                        macd, macd_signal, rsi14, macd_histogram,
+                        stochastic_k, stochastic_d
+                    FROM {table_name.value}
+                            where timeFrame=%s and ts>=%s
+                            ORDER BY ts ASC
+                            limit %s;
+                    """
+            params = (time_frame.label, 0, limit)
+            rows = self.db.query_to_bd(query, params)
 
-        query = f""" SELECT ts, o, h, l, c,
-                    vol, volCcy, volCcyQuote,
-                    ma50, ma200, ema12, ema26,
-                    macd, macd_signal, rsi14, macd_histogram,
-                    stochastic_k, stochastic_d
-                FROM {table_name.value}
-                        where timeFrame=%s and ts>=%s
-                        ORDER BY ts ASC
-                        limit %s;
-                """
-        params = (time_frame.label, 0, limit)
-        rows = self.db.query_to_bd(query, params)
+            columns = [
+                "ts",
+                "o",
+                "h",
+                "l",
+                "c",
+                "vol",
+                "volCcy",
+                "volCcyQuote",
+                "ma50",
+                "ma200",
+                "ema12",
+                "ema26",
+                "macd",
+                "macd_signal",
+                "rsi14",
+                "macd_histogram",
+                "stochastic_k",
+                "stochastic_d",
+            ]
 
-        columns = [
-            "ts",
-            "o",
-            "h",
-            "l",
-            "c",
-            "vol",
-            "volCcy",
-            "volCcyQuote",
-            "ma50",
-            "ma200",
-            "ema12",
-            "ema26",
-            "macd",
-            "macd_signal",
-            "rsi14",
-            "macd_histogram",
-            "stochastic_k",
-            "stochastic_d",
-        ]
+            df = pd.DataFrame(rows, columns=columns)
+        else:
+            df=df_ready.copy()
+            df = df.drop(columns=["offset"])
 
-        df = pd.DataFrame(rows, columns=columns)
+
+
 
         # Целевая — следующая цена закрытия
         df["target"] = df["c"].shift(-horizon)
@@ -299,18 +307,34 @@ class AIModelService:
         X_train, X_test = X_lstm[:split_idx], X_lstm[split_idx:]
         y_train, y_test = y_lstm[:split_idx], y_lstm[split_idx:]
 
-        model = Sequential(
-            [
-                LSTM(
-                    neyro,
-                    input_shape=(X_train.shape[1], X_train.shape[2]),
-                    return_sequences=False,
-                ),
-                Dropout(dropout),  # регулируем
-                Dense(32, activation="relu"),
-                Dense(1),
-            ]
-        )
+        # ---- Добавлено: перемешивание обучающей выборки ----
+        indices = np.arange(len(X_train))
+        np.random.shuffle(indices)
+        X_train = X_train[indices]
+        y_train = y_train[indices]
+        # ------------------------------------------------------
+
+        # model = Sequential(
+        #     [
+        #         LSTM(
+        #             neyro,
+        #             input_shape=(X_train.shape[1], X_train.shape[2]),
+        #             return_sequences=False,
+        #         ),
+        #         Dropout(dropout),  # регулируем
+        #         Dense(32, activation="relu"),
+        #         Dense(1),
+        #     ]
+        # )
+
+
+        model = Sequential([
+        LSTM(neyro, return_sequences=False, input_shape=(X_train.shape[1], X_train.shape[2])),
+        Dropout(dropout),
+        Dense(64, activation="relu"),  # <- новый слой
+        Dense(32, activation="relu"),  # <- ещё один
+        Dense(1)
+        ])
 
         model.compile(optimizer=Adam(learning_rate), loss="mse")
 

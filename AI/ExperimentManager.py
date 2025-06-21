@@ -18,13 +18,13 @@ class ExperimentManager:
     def _init_log(self):
         df = pd.DataFrame(columns=[
             "timestamp", "window_size", "horizon", "epochs",
-            "loss","val_loss", "mae", "rmse", "model_path", "scaler_path","learning_rate", "dropout", "neyro"
+            "loss","val_loss", "mae", "rmse", "model_path", "scaler_path","learning_rate", "dropout", "neyro","offset"
         ])
         df.to_csv(self.results_file, index=False)
 
     def run_experiment(self, table_name, timeframe, window_size, horizon,
-                       epochs=20, learning_rate=0.001, dropout=0.2, neyro=64):
-        model_name = f"{timeframe.name}_ws{window_size}_hz{horizon}_le_ra{learning_rate}_dr{dropout}_ney{neyro}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                       epochs=50, learning_rate=0.001, dropout=0.2, neyro=64, df_ready=None,offset=None,):
+        model_name = f"{timeframe.name}_ws{window_size}_hz{horizon}_le_ra{learning_rate}_dr{dropout}_ney{neyro}_offset{offset}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         model_path = f"models/{model_name}.h5"
         scaler_path = f"scalers/{model_name}_scalers.pkl"
         
@@ -40,7 +40,9 @@ class ExperimentManager:
             return_predictions=True,
             learning_rate=learning_rate,        # регулируем
             dropout=dropout,                 # регулируем
-            neyro=neyro                   # регулируем
+            neyro=neyro,                   # регулируем
+            df_ready=df_ready,
+            offset=offset
         )
 
         # Метрики
@@ -57,17 +59,17 @@ class ExperimentManager:
 
 
         # Логирование
-        self._log_result(window_size, horizon, epochs, model_path, scaler_path, model.history.history['loss'][-1],model.history.history['val_loss'][-1], mae, rmse, learning_rate, dropout, neyro)
+        self._log_result(window_size, horizon, epochs, model_path, scaler_path, model.history.history['loss'][-1],model.history.history['val_loss'][-1], mae, rmse, learning_rate, dropout, neyro,offset)
 
         print(f"✅ Модель сохранена: {model_path}")
         print(f"📊 MAE: {mae:.6f}, RMSE: {rmse:.6f}")
         return mae, rmse
 
-    def _log_result(self, window_size, horizon, epochs, model_path, scaler_path, loss,val_loss, mae, rmse, learning_rate, dropout, neyro):
+    def _log_result(self, window_size, horizon, epochs, model_path, scaler_path, loss,val_loss, mae, rmse, learning_rate, dropout, neyro,offset):
         df = pd.read_csv(self.results_file)
         df.loc[len(df)] = [
             datetime.now(), window_size, horizon, epochs,
-            loss,val_loss, mae, rmse, model_path, scaler_path, learning_rate, dropout, neyro
+            loss,val_loss, mae, rmse, model_path, scaler_path, learning_rate, dropout, neyro,offset
         ]
         df.to_csv(self.results_file, index=False)
 

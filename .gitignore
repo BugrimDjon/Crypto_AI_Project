@@ -6,6 +6,12 @@ __pycache__/
 *.db
 *.sqlite3
 
+# Игнорировать временные файлы и кэш
+*.tmp
+*.csv
+*.xlsx
+
+
 # Jupyter
 .ipynb_checkpoints/
 
@@ -26,7 +32,12 @@ data/
 
 # Environment files
 .env
+.venv
+.venv311
 
 models/
 scalers/
 results/
+dist/
+build/
+*.spec

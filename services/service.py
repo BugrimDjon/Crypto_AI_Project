@@ -396,27 +396,54 @@ class Servise:
     )
 
     def ai_expirement(self):
-        # tf.config.threading.set_intra_op_parallelism_threads(1)
-        # tf.config.threading.set_inter_op_parallelism_threads(1)
+        import tensorflow as tf
+        tf.config.threading.set_intra_op_parallelism_threads(2)
+        tf.config.threading.set_inter_op_parallelism_threads(2)
+        current_tf=Timeframe._1hour
+        current_coins=Coins.FET
+        offset=5
+        table_name=current_coins
+        limit=1000000
+        
+        query = f""" SELECT * FROM {table_name.value}
+                            WHERE timeFrame=%s
+                            ORDER BY ts DESC
+                            LIMIT %s;"""
+        params = (Timeframe._1min.label,limit)
+        rows = self.db.query_to_bd(query, params)
+        columns = [
+                    "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote"
+                ]
+        df_1min = pd.DataFrame(rows, columns=columns)
+        df_1min = df_1min.sort_values("ts").reset_index(drop=True)
+        amount=list(range(0,current_tf.minutes,offset))
+        math_candle=MathCandles()
+
+        df = math_candle.generate_multi_shift_features(df_1min,current_tf , amount)
+        del df_1min
+
+
         counter=0
         manager = ExperimentManager(self.ai_service)
-        for window in [10, 20, 30, 45]: #[30, 45]
-            for horizon in [1, 2, 3]:   #[1, 2]
-                for learning_rate in [0.01, 0.005, 0.001, 0.0005, 0.0001]: #[0.0005, 0.0001]
-                    for dropout in [0.01, 0.05, 0.1, 0.15]: #[0.01, 0.05]:
-                        for neyro in [32, 64,128, 256]:     #[128, 256]:
+        for window in [120, 240]: #[30, 45]
+            for horizon in [12, 24]:   #[1, 2]
+                for learning_rate in [0.001, 0.0005, 0.0001]: #[0.0005, 0.0001]
+                    for dropout in [0.1, 0.15, 0.2]: #[0.01, 0.05]:
+                        for neyro in [64, 128, 256]:     #[128, 256]:
                             counter+=1
-                            if (counter<0):  #613
+                            if (counter<3):  #613
                                 continue
                             manager.run_experiment(
-                                table_name=Coins.FET,
-                                timeframe=Timeframe._1day,
+                                table_name=current_coins,
+                                timeframe=current_tf,
                                 window_size=window,
                                 horizon=horizon,
-                                epochs=50,
+                                epochs=70,
                                 learning_rate=learning_rate,
                                 dropout=dropout,
                                 neyro=neyro,
+                                df_ready=df,
+                                offset=offset,
                             )
         manager.plot_results()
 

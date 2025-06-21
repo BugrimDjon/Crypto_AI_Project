@@ -16,6 +16,10 @@ class ModelManager:
         self.scalers_dir = os.path.join(base_dir, "scalers")
         self.models_info = self._load_model_scaler_pairs()
 
+        # Кэш для уже загруженных моделей и скейлеров, чтобы не загружать их заново каждый раз
+        self.loaded_models = {}
+        self.loaded_scalers = {}
+
     def list_models_out_df(self):
         """
         Возвращает DataFrame с параметрами всех моделей, включая пути к моделям и скейлерам.
@@ -140,24 +144,44 @@ class ModelManager:
 
     def predict_on_working_models(self, X_input, model_path, scaler_path):
         """
-        Выполняет прогноз по входному массиву `X_input` с использованием модели и скейлера,
-        подобранных по параметрам `timeframe`, `window_size`, `horizon`.
+        Выполняет прогноз по входному массиву `X_input` с использованием модели и скейлера.
+        Кэширует загруженные модели и скейлеры, чтобы не загружать их повторно.
+
+        Параметры:
+            X_input (np.ndarray): Входной массив признаков (последовательность для модели).
+            model_path (str): Путь к .keras или .h5 файлу модели.
+            scaler_path (str): Путь к .pkl файлу с двумя скейлерами (feature и target).
+
+        Возвращает:
+            y_pred (np.ndarray): Прогноз модели, приведённый к исходному масштабу.
         """
+        # Загружаем модель из кэша или с диска, если еще не загружена
+        if model_path not in self.loaded_models:
+            model = load_model(model_path, compile=False)
+            self.loaded_models[model_path] = model
+        else:
+            model = self.loaded_models[model_path]
 
-        model = load_model(model_path, compile=False)
-        feature_scaler, target_scaler = joblib.load(scaler_path)
+        # Загружаем скейлеры из кэша или с диска, если еще не загружены
+        if scaler_path not in self.loaded_scalers:
+            scalers = joblib.load(scaler_path)
+            self.loaded_scalers[scaler_path] = scalers
+        else:
+            scalers = self.loaded_scalers[scaler_path]
 
-        # Нормализация входных данных
+        feature_scaler, target_scaler = scalers
+
+        # Масштабируем входной массив (нормализация признаков)
         X_scaled = feature_scaler.transform(X_input)
 
-        # Добавляем размерность, если вход одномерный
+        # Если подаётся 2D-массив (одна последовательность), добавим batch-ось
         if X_scaled.ndim == 2:
-            X_scaled = np.expand_dims(X_scaled, axis=0)
+            X_scaled = np.expand_dims(X_scaled, axis=0)  # [1, window_size, num_features]
 
-        # Предсказание
+        # Прогноз модели
         y_pred = model.predict(X_scaled)
 
-        # Обратное преобразование, если требуется (по желанию)
+        # Обратное масштабирование целевой переменной
         y_pred = target_scaler.inverse_transform(y_pred)
 
         return y_pred

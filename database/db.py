@@ -133,7 +133,7 @@ class Database:
             cursor = self.connection.cursor(dictionary=True)
             cursor.execute(query, params)
             result = cursor.fetchall()
-            # cursor.close()
+            cursor.close()
             return result
         except Error as e:
             logging.error(

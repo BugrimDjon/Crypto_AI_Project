@@ -40,6 +40,10 @@ db.connect()
 # передача открыбой бд в мнтод
 run_servis = Servise(db)
 
+import tensorflow as tf
+
+print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
+print("GPUs:", tf.config.list_physical_devices('GPU'))
 
 
 
@@ -130,6 +134,7 @@ while 1:
             )  # расчет индикаторов по всем таймфреймам
         case 4:
             # run_servis.ai_expirement_predictions()
+            
             run_servis.ai_expirement()
         case 8:
             run_servis.repord_db(Coins.FET)
@@ -175,7 +180,10 @@ while 1:
 
                 run_servis.make_forecast_on_working_models()
                 
+                import gc
+                gc.collect()
                 wait_until_next_interval(5)
+                
 
 
         case _:
