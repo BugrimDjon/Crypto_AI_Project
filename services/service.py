@@ -109,9 +109,14 @@ class Servise:
         model_results_df["tf_label"] = model_results_df["timeframe_enum"].apply(lambda tf: tf.label)
 
         model_results_df.sort_values(by="tf_minutes", ascending=True, inplace=True)
-        limit=int(model_results_df["window_size"].max())
+        expr = (
+            (model_results_df["window_size"] + model_results_df["horizon"]) /
+            (model_results_df["tf_minutes"] / model_results_df["offset"])
+            )
+        max_idx = expr.idxmax()
+        row_max_ws=model_results_df.loc[max_idx]
 
-        limit=int(((model_results_df["window_size"]+201)*model_results_df["tf_minutes"]).max())
+        limit=int(((expr.loc[max_idx]+251)*row_max_ws["tf_minutes"]))
         query = f""" SELECT * FROM {table_name.value}
                             WHERE timeFrame=%s
                             ORDER BY ts DESC
@@ -154,21 +159,24 @@ class Servise:
 #                 # actual_df["ts"] = pd.to_datetime(actual_df["ts"])
 
         current_timefreme=Timeframe._1min
-
+        # перебор всех моделей которые находятся в папке топ
         for id_row, row in model_results_df.iterrows():
+            # если текущий таймфрейм совпадает с предыдущим, то пересчитывать данные не надо
             if current_timefreme!=row["timeframe_enum"]:
+                # если таймфрейм >= 5 минут то произведем перерачсет данных
                 if row["timeframe_enum"].minutes>= 5:
-                    amount=list(range(0,int(row["timeframe_enum"].minutes),5))
+                    amount=list(range(0,int(row["timeframe_enum"].minutes),row["offset"]))
                     current_timefreme=row["timeframe_enum"]
                     df = math_candle.generate_multi_shift_features(df_1min,row["timeframe_enum"] , amount)
+                    df = df.sort_values("ts").reset_index(drop=True)
 
             model_path=row["model_path"]
             scaler_path=row["scaler_path"]
             feature_cols = [col for col in df.columns if col not in ["ts", "offset"]]
             
 
-            for i in amount:
-                X_input =df[df["offset"]==i]
+            for i in range(row["horizon"]):
+                X_input =df.iloc[len(df)-i-row["window_size"]:len(df)-i]
                 len_ws=row["window_size"]
                 if len(X_input) < len_ws:
                     print(f"Недостаточно данных для модели: {row['model_path']}")
@@ -177,7 +185,7 @@ class Servise:
                 X_input = X_input[feature_cols].tail(len_ws).values
                 y_pred = manager.predict_on_working_models(X_input,model_path,scaler_path)
 
-                horizon=row["horizon"]
+                horizon=row["horizon"]/(row["tf_minutes"]/row["offset"])
                 data_forcast=pd.to_datetime(last_ts,unit="ms")
                 # data_forcast=data_forcast.tz_localize('UTC').tz_convert(tzlocal.get_localzone())
                 data_forcast+=timedelta(minutes=row["tf_minutes"] * (horizon+1))
@@ -190,8 +198,8 @@ class Servise:
                 )
         self.reports_servise.report_forecast(model_results)
         for i in model_results:
-            print(f"Горизонт - {i["horizon"]}   таймфрейм - {i["time_frame"].label}   "+
-                  f"прогноз на дату {i["data_forcast"]} равен {i["prais"]}")
+            print(f'Горизонт - {i["horizon"]}   таймфрейм - {i["time_frame"].label}   '+
+                  f'прогноз на дату {i["data_forcast"]} равен {i["prais"]}')
            
 
        
@@ -397,11 +405,11 @@ class Servise:
 
     def ai_expirement(self):
         import tensorflow as tf
-        tf.config.threading.set_intra_op_parallelism_threads(2)
-        tf.config.threading.set_inter_op_parallelism_threads(2)
-        current_tf=Timeframe._1hour
+        # tf.config.threading.set_intra_op_parallelism_threads(4)
+        # tf.config.threading.set_inter_op_parallelism_threads(4)
+        current_tf=Timeframe._4hour
         current_coins=Coins.FET
-        offset=5
+        offset=10
         table_name=current_coins
         limit=1000000
         
@@ -420,19 +428,35 @@ class Servise:
         math_candle=MathCandles()
 
         df = math_candle.generate_multi_shift_features(df_1min,current_tf , amount)
+        df = df.sort_values("ts").reset_index(drop=True)
         del df_1min
+        
+        # ✅ Укажи путь, куда сохранить
+        save_path = "D:/Project_programming/for_AI/Crypto_AI_Project/Colab/df_ready.pkl"  # если синхронизируется с Google Drive
+        # save_path = "df_ready.pkl"  # если просто в текущей папке
+
+        # # ✅ Сохраняем датафрейм
+        # df.to_pickle(save_path)
+        # print(f"✅ df_ready.pkl успешно сохранён по пути: {save_path}")
 
 
         counter=0
         manager = ExperimentManager(self.ai_service)
-        for window in [120, 240]: #[30, 45]
-            for horizon in [12, 24]:   #[1, 2]
-                for learning_rate in [0.001, 0.0005, 0.0001]: #[0.0005, 0.0001]
-                    for dropout in [0.1, 0.15, 0.2]: #[0.01, 0.05]:
-                        for neyro in [64, 128, 256]:     #[128, 256]:
+        for window in [240]: #[30, 45]
+            for horizon in [12]:   #[1, 2]
+                for learning_rate in [0.0005, 0.00025,0.0001]: #[0.0005, 0.0001]
+                    for dropout in [0.01, 0.05, 0.1]: #[0.01, 0.05]:
+                        for neyro in [64,128,256, 384]:     #[128, 256]:
                             counter+=1
-                            if (counter<3):  #613
+                            print(f"Проход - {counter}")
+                            # tf.debugging.set_log_device_placement(True)
+                            if (counter<9):  #613
                                 continue
+                            
+                            if neyro>300:
+                                batch_size=32
+                            else:
+                                batch_size=64
                             manager.run_experiment(
                                 table_name=current_coins,
                                 timeframe=current_tf,
@@ -444,6 +468,7 @@ class Servise:
                                 neyro=neyro,
                                 df_ready=df,
                                 offset=offset,
+                                batch_size=batch_size,
                             )
         manager.plot_results()
 
@@ -459,7 +484,7 @@ class Servise:
             dt_max = datetime.fromtimestamp(request[0]["max_ts"] / 1000)
             dt_min = datetime.fromtimestamp(request[0]["min_ts"] / 1000)
             print(
-                f"Таймфрейм {i.label}   начало {dt_min}         конец {dt_min}      колличество записей {request[0]["count"]}"
+                f'Таймфрейм {i.label}   начало {dt_min}         конец {dt_min}      колличество записей {request[0]["count"]}'
             )
 
     def first_load_candles(self, coin: Coins, length_in_hours: int = 365 * 24):

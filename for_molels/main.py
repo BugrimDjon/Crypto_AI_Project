@@ -19,8 +19,8 @@ if __name__ == "__main__":
 
 
     db = Database()
-    db.connect()
-    # передача открыбой бд в мнтод
+    db.connect()    
+    # передача   открыбой бд в мнтод
     run_servis = Servise(db)
 
     run_servis.ai_expirement()

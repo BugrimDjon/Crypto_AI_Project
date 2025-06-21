@@ -234,7 +234,8 @@ class AIModelService:
         dropout: float = 0.2,  # регулируем
         neyro: int = 64,
         df_ready=None,
-        offset=None
+        offset=None,
+        batch_size=64
     ):
         if df_ready is None:
             query = f""" SELECT ts, o, h, l, c,
@@ -326,16 +327,18 @@ class AIModelService:
         #         Dense(1),
         #     ]
         # )
-
-
+        # import os
+        # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        # neyro=4
         model = Sequential([
-        LSTM(neyro, return_sequences=False, input_shape=(X_train.shape[1], X_train.shape[2])),
+        LSTM(neyro, return_sequences=False, input_shape=(X_train.shape[1], X_train.shape[2]), implementation=1, unroll=True),
         Dropout(dropout),
         Dense(64, activation="relu"),  # <- новый слой
         Dense(32, activation="relu"),  # <- ещё один
         Dense(1)
         ])
 
+        # print("LSTM implementation:", layer.implementation)
         model.compile(optimizer=Adam(learning_rate), loss="mse")
 
         early_stop = EarlyStopping(
@@ -346,7 +349,7 @@ class AIModelService:
             X_train,
             y_train,
             epochs=epochs,
-            batch_size=64,
+            batch_size=batch_size,
             validation_data=(X_test, y_test),
             callbacks=[early_stop],
             verbose=1,
@@ -363,8 +366,8 @@ class AIModelService:
             y_pred = model.predict(X_test)
             y_pred = target_scaler.inverse_transform(y_pred)
             y_true = target_scaler.inverse_transform(y_test)
-            return model, feature_scaler, target_scaler, y_true, y_pred
-        return model, feature_scaler, target_scaler
+            return model,history,batch_size, feature_scaler, target_scaler, y_true, y_pred
+        return model,history,batch_size, feature_scaler, target_scaler
 
     def load_model_and_scalers(self):
         self.model = load_model("lstm_model.h5", compile=False)

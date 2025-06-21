@@ -34,6 +34,7 @@ data/
 .env
 .venv
 .venv311
+.venv39
 
 models/
 scalers/

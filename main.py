@@ -19,6 +19,7 @@ import requests
 from enums.AfterBefore import AfterBefore
 from enums.coins import Coins
 from enums.timeframes import Timeframe
+
 from ssl import OP_ENABLE_MIDDLEBOX_COMPAT
 from database.db import Database
 from services import okx_candles
@@ -40,10 +41,10 @@ db.connect()
 # передача открыбой бд в мнтод
 run_servis = Servise(db)
 
-import tensorflow as tf
+# import tensorflow as tf
 
-print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
-print("GPUs:", tf.config.list_physical_devices('GPU'))
+# print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
+# print("GPUs:", tf.config.list_physical_devices('GPU'))
 
 
 
@@ -97,28 +98,73 @@ while 1:
         continue
 
     # button =4
-    match button:
-        case 1:
-            # run_servis.load_model_and_scalers()
-            # price_pred = run_servis.predict_price(Coins.FET, Timeframe._30min)
-            # print(f"📈 Прогноз цены закрытия: {price_pred:.6f}")
-            # for i in range(100):
-            # i=1
-            # star_time=1749241800000+i*30*1000*60    
-            # run_servis.make_forecast(str(star_time))
-            run_servis.make_forecast_on_working_models()
+    if button==1:
+    
+        # run_servis.load_model_and_scalers()
+        # price_pred = run_servis.predict_price(Coins.FET, Timeframe._30min)
+        # print(f"📈 Прогноз цены закрытия: {price_pred:.6f}")
+        # for i in range(100):
+        # i=1
+        # star_time=1749241800000+i*30*1000*60    
+        # run_servis.make_forecast(str(star_time))
+        run_servis.make_forecast_on_working_models()
 
-        case 2:
-            confirm = input("⚠️ Подтвердите обучение модели (y/n): ").strip().lower()
-            if confirm == "y":
-                model, fs, ts = run_servis.train_model(
-                    Coins.FET, Timeframe._30min, window_size=100
-                )
-                print("✅ Модель успешно обучена и сохранена.")
-            else:
-                print("❌ Обучение отменено.")
-            # model, feature_scaler, target_scaler = run_servis.for_ai(Coins.FET, Timeframe._30min)
-        case 3:
+    elif button==2:
+        confirm = input("⚠️ Подтвердите обучение модели (y/n): ").strip().lower()
+        if confirm == "y":
+            model, fs, ts = run_servis.train_model(
+                Coins.FET, Timeframe._30min, window_size=100
+            )
+            print("✅ Модель успешно обучена и сохранена.")
+        else:
+            print("❌ Обучение отменено.")
+        # model, feature_scaler, target_scaler = run_servis.for_ai(Coins.FET, Timeframe._30min)
+    elif button==3:
+        print("🔄 Обновление таблицы...")
+        time_for_update = run_servis.data_for_update(Coins.FET)
+        err = run_servis.check_sequence_timeframes(
+            Coins.FET,
+            Timeframe._1min,
+            int(time_for_update["time_in_database"]),
+            int(time_for_update["current_time_on_the_exchange"]),
+            True,
+        )
+        agregate_table(Coins.FET)
+        run_servis.calculation_of_indicators(
+            Coins.FET
+        )  # расчет индикаторов по всем таймфреймам
+    elif button==4:
+        # run_servis.ai_expirement_predictions()
+        
+        run_servis.ai_expirement()
+    elif button==8:
+        run_servis.repord_db(Coins.FET)
+    elif button==9:
+        run_servis.first_load_candles(Coins.FET, (365 * 1.5 * 24))  # готово
+        err = run_servis.check_sequence_timeframes(
+            Coins.FET, Timeframe._1min, 0, 1748943960000, True
+        )
+        agregate_table(Coins.FET)
+        run_servis.calculation_of_indicators(
+            Coins.FET
+        )  # расчет индикаторов по всем таймфреймам
+        print("✅ Данные загружены, агрегированы, индикаторы рассчитаны.")
+
+    elif button==0:
+        print("👋 Выход из программы.")
+        break
+
+    elif button==11:
+        def wait_until_next_interval(interval_minutes=5):
+            now = datetime.now()
+            next_minute = (now.minute // interval_minutes + 1) * interval_minutes
+            next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=next_minute)
+            wait_seconds = (next_time - now).total_seconds()
+            time.sleep(wait_seconds)
+
+        while True:
+            print("Запуск в:", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            
             print("🔄 Обновление таблицы...")
             time_for_update = run_servis.data_for_update(Coins.FET)
             err = run_servis.check_sequence_timeframes(
@@ -132,63 +178,18 @@ while 1:
             run_servis.calculation_of_indicators(
                 Coins.FET
             )  # расчет индикаторов по всем таймфреймам
-        case 4:
-            # run_servis.ai_expirement_predictions()
+
+            run_servis.make_forecast_on_working_models()
             
-            run_servis.ai_expirement()
-        case 8:
-            run_servis.repord_db(Coins.FET)
-        case 9:
-            run_servis.first_load_candles(Coins.FET, (365 * 1.5 * 24))  # готово
-            err = run_servis.check_sequence_timeframes(
-                Coins.FET, Timeframe._1min, 0, 1748943960000, True
-            )
-            agregate_table(Coins.FET)
-            run_servis.calculation_of_indicators(
-                Coins.FET
-            )  # расчет индикаторов по всем таймфреймам
-            print("✅ Данные загружены, агрегированы, индикаторы рассчитаны.")
-
-        case 0:
-            print("👋 Выход из программы.")
-            break
-
-        case 11:
-            def wait_until_next_interval(interval_minutes=5):
-                now = datetime.now()
-                next_minute = (now.minute // interval_minutes + 1) * interval_minutes
-                next_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=next_minute)
-                wait_seconds = (next_time - now).total_seconds()
-                time.sleep(wait_seconds)
-
-            while True:
-                print("Запуск в:", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                
-                print("🔄 Обновление таблицы...")
-                time_for_update = run_servis.data_for_update(Coins.FET)
-                err = run_servis.check_sequence_timeframes(
-                    Coins.FET,
-                    Timeframe._1min,
-                    int(time_for_update["time_in_database"]),
-                    int(time_for_update["current_time_on_the_exchange"]),
-                    True,
-                )
-                agregate_table(Coins.FET)
-                run_servis.calculation_of_indicators(
-                    Coins.FET
-                )  # расчет индикаторов по всем таймфреймам
-
-                run_servis.make_forecast_on_working_models()
-                
-                import gc
-                gc.collect()
-                wait_until_next_interval(5)
-                
+            import gc
+            gc.collect()
+            wait_until_next_interval(5)
+            
 
 
-        case _:
-            print("❌ Неизвестная команда. Попробуйте снова.")
-            break
+    else:
+        print("❌ Неизвестная команда. Попробуйте снова.")
+        break
 
 
 
