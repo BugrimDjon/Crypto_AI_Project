@@ -129,10 +129,10 @@ while 1:
             int(time_for_update["current_time_on_the_exchange"]),
             True,
         )
-        agregate_table(Coins.FET)
-        run_servis.calculation_of_indicators(
-            Coins.FET
-        )  # расчет индикаторов по всем таймфреймам
+        # agregate_table(Coins.FET)
+        # run_servis.calculation_of_indicators(
+        #     Coins.FET
+        # )  # расчет индикаторов по всем таймфреймам
     elif button==4:
         # run_servis.ai_expirement_predictions()
         
