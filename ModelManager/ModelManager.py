@@ -1,10 +1,18 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # <--- Отключаем GPU ДО импорта TF
 import re
 import joblib
 import numpy as np
 from collections import defaultdict
 from tensorflow.keras.models import load_model
 import pandas as pd
+import tensorflow as tf
+try:
+    tf.config.set_visible_devices([], 'GPU')  # Отключаем DirectML GPU
+    print("Используется только CPU")
+except Exception as e:
+    print("Не удалось отключить GPU:", e)
+
 
 
 class ModelManager:
@@ -159,6 +167,7 @@ class ModelManager:
         """
         # Загружаем модель из кэша или с диска, если еще не загружена
         if model_path not in self.loaded_models:
+            # with tf.device('/CPU:0'):
             model = load_model(model_path, compile=False)
             self.loaded_models[model_path] = model
         else:
