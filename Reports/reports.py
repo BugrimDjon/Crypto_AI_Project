@@ -48,7 +48,7 @@ class Reports:
         # Считаем количество 5-минутных интервалов
         diff_minutes = int((now_utc - last_valid_time_utc).total_seconds() // 60)
         # limit = diff_minutes // 5
-        limit = diff_minutes
+        limit = diff_minutes+20
 
         if limit <= 0:
             print("Новых данных нет.")
@@ -76,13 +76,13 @@ class Reports:
             .dt.tz_convert(self.local_tz)
             .dt.tz_localize(None)
         )
+        # df_prices["data"] = df_prices["data"].dt.round("5min")
+        # добавляем 1 мин для визупльного правильного отображения графика
+        # так как свеча называется по времени открытия, а на график мы выводим 
+        # цену закрытия, которая в данном случае на 1 мин отличается
+        df_prices["data"] += pd.Timedelta(minutes=1)
         # Фильтруем только те строки, где минуты делятся на 5 (т.е. кратны 5 минутам, без округлений)
         df_prices = df_prices[df_prices['data'].dt.minute % 5 == 0]
-        # df_prices["data"] = df_prices["data"].dt.round("5min")
-        # добавляем 5 мин для визупльного правильного отображения графика
-        # так как свеча называется по времени открытия, а на график мы выводим 
-        # цену закрытия, которая в данном случае на 5 мин отличается
-        df_prices["data"] += pd.Timedelta(minutes=5)
 
         # Подготовим основной df
         out_df["data"] = pd.to_datetime(out_df["data"]).dt.round("5min")
@@ -179,5 +179,5 @@ class Reports:
         out_df.to_csv(full_path, index=False, decimal=",")
         visual = Visual()
         visual.plot_price_and_forecasts2(out_df)
-        visual.plot_price_and_forecasts(out_df)
+        # visual.plot_price_and_forecasts(out_df)
 
