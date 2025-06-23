@@ -444,13 +444,13 @@ class Servise:
         manager = ExperimentManager(self.ai_service)
         for window in [240]: #[30, 45]
             for horizon in [12]:   #[1, 2]
-                for learning_rate in [0.0005, 0.00025,0.0001]: #[0.0005, 0.0001]
-                    for dropout in [0.01, 0.05, 0.1]: #[0.01, 0.05]:
+                for learning_rate in [0.00025,0.0001,0.00005]: #[0.0005, 0.0001]
+                    for dropout in [0.005, 0.01, 0.05]: #[0.01, 0.05]:
                         for neyro in [64,128,256, 384]:     #[128, 256]:
                             counter+=1
                             print(f"Проход - {counter}")
                             # tf.debugging.set_log_device_placement(True)
-                            if (counter<9):  #613
+                            if (counter<12):  #613
                                 continue
                             
                             if neyro>300:
