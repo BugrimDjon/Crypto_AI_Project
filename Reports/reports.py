@@ -11,6 +11,7 @@ from database.db import Database
 from enums.timeframes import Timeframe
 from datetime import timezone
 from visual.visual import Visual
+from MathCandles.mathCandles import MathCandles
 
 class Reports:
     def __init__(self, db: Database) -> None:
@@ -46,7 +47,8 @@ class Reports:
 
         # Считаем количество 5-минутных интервалов
         diff_minutes = int((now_utc - last_valid_time_utc).total_seconds() // 60)
-        limit = diff_minutes // 5
+        # limit = diff_minutes // 5
+        limit = diff_minutes+20
 
         if limit <= 0:
             print("Новых данных нет.")
@@ -59,9 +61,10 @@ class Reports:
             ORDER BY ts DESC
             LIMIT %s;
         """
-        params = (timeframe.label, limit)
+        params = (Timeframe._1min.label, limit)
         result = self.db.query_to_bd(query, params)
-
+        # math_candle=MathCandles()
+        # result = math_candle.aggregate_with_offset(df_1min,Timeframe._5min)
         if not result:
             print("Данные из БД не получены.")
             return out_df
@@ -73,11 +76,13 @@ class Reports:
             .dt.tz_convert(self.local_tz)
             .dt.tz_localize(None)
         )
-        df_prices["data"] = df_prices["data"].dt.round("5min")
-        # добавляем 5 мин для визупльного правильного отображения графика
+        # df_prices["data"] = df_prices["data"].dt.round("5min")
+        # добавляем 1 мин для визупльного правильного отображения графика
         # так как свеча называется по времени открытия, а на график мы выводим 
-        # цену закрытия, которая в данном случае на 5 мин отличается
-        df_prices["data"] += pd.Timedelta(minutes=5)
+        # цену закрытия, которая в данном случае на 1 мин отличается
+        df_prices["data"] += pd.Timedelta(minutes=1)
+        # Фильтруем только те строки, где минуты делятся на 5 (т.е. кратны 5 минутам, без округлений)
+        df_prices = df_prices[df_prices['data'].dt.minute % 5 == 0]
 
         # Подготовим основной df
         out_df["data"] = pd.to_datetime(out_df["data"]).dt.round("5min")
@@ -172,7 +177,7 @@ class Reports:
         for col in out_df.columns[1:]:  # пропускаем колонку с датой
             out_df[col] = pd.to_numeric(out_df[col].astype(str).str.replace(',', '.'), errors='coerce')
         out_df.to_csv(full_path, index=False, decimal=",")
-        # visual = Visual()
-        # visual.plot_price_and_forecasts2(out_df)
+        visual = Visual()
+        visual.plot_price_and_forecasts2(out_df)
         # visual.plot_price_and_forecasts(out_df)
 

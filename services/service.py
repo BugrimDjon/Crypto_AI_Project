@@ -108,15 +108,17 @@ class Servise:
         # Или метку:
         model_results_df["tf_label"] = model_results_df["timeframe_enum"].apply(lambda tf: tf.label)
 
-        model_results_df.sort_values(by="tf_minutes", ascending=True, inplace=True)
+        # model_results_df.sort_values(by="tf_minutes", ascending=True, inplace=True)
+        model_results_df.sort_values(by=["tf_minutes", "offset"], ascending=[True, False], inplace=True)
+
         expr = (
-            (model_results_df["window_size"] + model_results_df["horizon"]) /
+            (model_results_df["window_size"] + model_results_df["horizon"]) *
             (model_results_df["tf_minutes"] / model_results_df["offset"])
             )
         max_idx = expr.idxmax()
         row_max_ws=model_results_df.loc[max_idx]
 
-        limit=int(((expr.loc[max_idx]+251)*row_max_ws["tf_minutes"]))
+        limit=int((expr.loc[max_idx]+(300*row_max_ws["tf_minutes"])))
         query = f""" SELECT * FROM {table_name.value}
                             WHERE timeFrame=%s
                             ORDER BY ts DESC

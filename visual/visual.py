@@ -123,7 +123,7 @@ class Visual:
             hovermode='x unified'
         )
 
-        fig.show()
+        fig.write_html("./out/report.html")
 
     def plot_price_and_forecasts(self, df: pd.DataFrame):
         # import plotly.graph_objects as go
