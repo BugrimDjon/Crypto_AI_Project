@@ -1,6 +1,7 @@
 import os
 import pandas as pd
-from sklearn.metrics import root_mean_squared_error
+import numpy as np
+from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -56,7 +57,7 @@ class ExperimentManager:
         # rmse = sklearn_mse(y_true.ravel(), y_pred.ravel(), squared=False)
         mae = mean_absolute_error(y_true.ravel(), y_pred.ravel())
 
-        rmse = root_mean_squared_error(y_true.ravel(), y_pred.ravel())
+        rmse = np.sqrt(mean_squared_error(y_true.ravel(), y_pred.ravel()))
 
 
         # Логирование

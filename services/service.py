@@ -28,7 +28,8 @@ from datetime import timedelta
 from Reports.reports import Reports
 from MathCandles.mathCandles import MathCandles
 import tensorflow as tf
-import time
+import optuna
+
 
 
 import pandas as pd
@@ -53,6 +54,123 @@ class Servise:
         self.db = db
         self.ai_service = AIModelService(db)
         self.reports_servise=Reports(db)
+
+
+    def run_optuna_search(self, df_ready, n_trials=30):
+        def objective(trial):
+            learning_rate = trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True)
+            dropout = trial.suggest_float("dropout", 0.001, 0.05)
+            neyro = trial.suggest_categorical("neyro", [256, 384])
+
+            batch_size = 32 if neyro > 300 else 64
+
+            manager = ExperimentManager(self.ai_service)
+
+            mae, rmse = manager.run_experiment(
+                table_name=Coins.FET,
+                timeframe=Timeframe._4hour,
+                window_size=240,
+                horizon=24,
+                epochs=70,
+                learning_rate=learning_rate,
+                dropout=dropout,
+                neyro=neyro,
+                df_ready=df_ready,
+                offset=10,
+                batch_size=batch_size,
+            )
+            tf.keras.backend.clear_session()
+
+            return rmse  # Можно заменить на mae или val_loss
+
+        storage_path = "results/fet_optuna.db"
+        storage_url = f"sqlite:///{storage_path}"
+        
+        study = optuna.create_study(
+            direction="minimize",
+            study_name="fet_study",
+            storage=storage_url,
+            load_if_exists=True
+        )
+
+        study.optimize(objective, n_trials=n_trials)
+
+        print("\n🥇 Лучшие параметры:", study.best_params)
+        return study
+
+
+    def ai_expirement(self,use_optuna=False):
+        import tensorflow as tf
+        tf.config.threading.set_intra_op_parallelism_threads(4)
+        tf.config.threading.set_inter_op_parallelism_threads(4)
+        current_tf=Timeframe._4hour
+        current_coins=Coins.FET
+        offset=10
+        table_name=current_coins
+        limit=1000000
+        
+        query = f""" SELECT * FROM {table_name.value}
+                            WHERE timeFrame=%s
+                            ORDER BY ts DESC
+                            LIMIT %s;"""
+        params = (Timeframe._1min.label,limit)
+        rows = self.db.query_to_bd(query, params)
+        columns = [
+                    "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote"
+                ]
+        df_1min = pd.DataFrame(rows, columns=columns)
+        df_1min = df_1min.sort_values("ts").reset_index(drop=True)
+        amount=list(range(0,current_tf.minutes,offset))
+        math_candle=MathCandles()
+
+        df = math_candle.generate_multi_shift_features(df_1min,current_tf , amount)
+        df = df.sort_values("ts").reset_index(drop=True)
+        del df_1min
+        
+        # ✅ Укажи путь, куда сохранить
+        # save_path = "D:/Project_programming/for_AI/Crypto_AI_Project/Colab/df_ready.pkl"  # если синхронизируется с Google Drive
+
+        if use_optuna:
+            # from optuna_exp import run_optuna_search
+            self.run_optuna_search(df_ready=df)
+            return  # Завершаем после Optuna
+
+
+        counter=0
+        manager = ExperimentManager(self.ai_service)
+        for window in [240]: #[30, 45]
+            for horizon in [24]:   #[1, 2]
+                for learning_rate in [0.00025,0.0001,0.00005]: #[0.0005, 0.0001]
+                    for dropout in [0.005, 0.01, 0.05]: #[0.01, 0.05]:
+                        for neyro in [64,128,256, 384]:     #[128, 256]:
+                            counter+=1
+                            print(f"Проход - {counter}")
+                            # tf.debugging.set_log_device_placement(True)
+                            if (counter<0):  #613
+                                continue
+                            
+                            if neyro>300:
+                                batch_size=32
+                            else:
+                                batch_size=64
+                            manager.run_experiment(
+                                table_name=current_coins,
+                                timeframe=current_tf,
+                                window_size=window,
+                                horizon=horizon,
+                                epochs=70,
+                                learning_rate=learning_rate,
+                                dropout=dropout,
+                                neyro=neyro,
+                                df_ready=df,
+                                offset=offset,
+                                batch_size=batch_size,
+                            )
+                            tf.keras.backend.clear_session()
+        manager.plot_results()
+
+
+
 
 
     def update_y_true(csv_path: str, actual_prices: pd.DataFrame):
@@ -405,74 +523,7 @@ class Servise:
         csv_path = "D:/Project_programming/for_AI/Crypto_AI_Project/expipement/predictions2.csv",  # путь для CSV
     )
 
-    def ai_expirement(self):
-        import tensorflow as tf
-        # tf.config.threading.set_intra_op_parallelism_threads(4)
-        # tf.config.threading.set_inter_op_parallelism_threads(4)
-        current_tf=Timeframe._4hour
-        current_coins=Coins.FET
-        offset=10
-        table_name=current_coins
-        limit=1000000
-        
-        query = f""" SELECT * FROM {table_name.value}
-                            WHERE timeFrame=%s
-                            ORDER BY ts DESC
-                            LIMIT %s;"""
-        params = (Timeframe._1min.label,limit)
-        rows = self.db.query_to_bd(query, params)
-        columns = [
-                    "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote"
-                ]
-        df_1min = pd.DataFrame(rows, columns=columns)
-        df_1min = df_1min.sort_values("ts").reset_index(drop=True)
-        amount=list(range(0,current_tf.minutes,offset))
-        math_candle=MathCandles()
-
-        df = math_candle.generate_multi_shift_features(df_1min,current_tf , amount)
-        df = df.sort_values("ts").reset_index(drop=True)
-        del df_1min
-        
-        # ✅ Укажи путь, куда сохранить
-        save_path = "D:/Project_programming/for_AI/Crypto_AI_Project/Colab/df_ready.pkl"  # если синхронизируется с Google Drive
-        # save_path = "df_ready.pkl"  # если просто в текущей папке
-
-        # # ✅ Сохраняем датафрейм
-        # df.to_pickle(save_path)
-        # print(f"✅ df_ready.pkl успешно сохранён по пути: {save_path}")
-
-
-        counter=0
-        manager = ExperimentManager(self.ai_service)
-        for window in [240]: #[30, 45]
-            for horizon in [12]:   #[1, 2]
-                for learning_rate in [0.00025,0.0001,0.00005]: #[0.0005, 0.0001]
-                    for dropout in [0.005, 0.01, 0.05]: #[0.01, 0.05]:
-                        for neyro in [64,128,256, 384]:     #[128, 256]:
-                            counter+=1
-                            print(f"Проход - {counter}")
-                            # tf.debugging.set_log_device_placement(True)
-                            if (counter<12):  #613
-                                continue
-                            
-                            if neyro>300:
-                                batch_size=32
-                            else:
-                                batch_size=64
-                            manager.run_experiment(
-                                table_name=current_coins,
-                                timeframe=current_tf,
-                                window_size=window,
-                                horizon=horizon,
-                                epochs=70,
-                                learning_rate=learning_rate,
-                                dropout=dropout,
-                                neyro=neyro,
-                                df_ready=df,
-                                offset=offset,
-                                batch_size=batch_size,
-                            )
-        manager.plot_results()
+    
 
     def repord_db(self, table_name: Coins):
         print(f"Монета {table_name.value}")

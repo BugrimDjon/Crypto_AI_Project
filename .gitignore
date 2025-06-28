@@ -42,3 +42,9 @@ results/
 dist/
 build/
 *.spec
+venv_wsl/
+venv_tf/
+Colab/
+models/
+top_models/
+top_models2/

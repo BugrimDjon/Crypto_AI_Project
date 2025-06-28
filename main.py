@@ -11,6 +11,7 @@ import joblib
 from tensorflow.keras.models import load_model, Sequential
 from Reports.reports import Reports
 from datetime import datetime, timedelta
+import tensorflow as tf
 
 import time
 from datetime import datetime
@@ -20,13 +21,12 @@ from enums.AfterBefore import AfterBefore
 from enums.coins import Coins
 from enums.timeframes import Timeframe
 
-from ssl import OP_ENABLE_MIDDLEBOX_COMPAT
+# from ssl import OP_ENABLE_MIDDLEBOX_COMPAT
 from database.db import Database
 from services import okx_candles
 from config.SettingsCoins import SettingsCoins
 from services.service import Servise
 from AI.AIModelService import AIModelService
-from datetime import datetime
 import tzlocal
 
 
@@ -35,6 +35,17 @@ def clear_console():
     os.system("cls" if os.name == "nt" else "clear")
 
 clear_console()
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+
+
+# gpus = tf.config.list_physical_devices('GPU')
+# if gpus:
+#     try:
+#         tf.config.experimental.set_memory_growth(gpus[0], True)
+#         print("✅ memory_growth установлен")
+#     except RuntimeError as e:
+#         print("⚠️ Нельзя установить memory_growth:", e)
+
 # открываем соединение с бд
 db = Database()
 db.connect()
@@ -70,6 +81,8 @@ def agregate_table(table_name: Coins):
     len = run_servis.recalc_timeframe(table_name, Timeframe._4hour, Timeframe._1day)
     print("********************* Расчет недельных таймфреймов************")
     len = run_servis.recalc_timeframe(table_name, Timeframe._1day, Timeframe._1week)
+
+
 
 
 
@@ -136,7 +149,7 @@ while 1:
     elif button==4:
         # run_servis.ai_expirement_predictions()
         
-        run_servis.ai_expirement()
+        run_servis.ai_expirement(True)
     elif button==8:
         run_servis.repord_db(Coins.FET)
     elif button==9:
@@ -184,7 +197,7 @@ while 1:
 
     else:
         print("❌ Неизвестная команда. Попробуйте снова.")
-        break
+        # break
 
 
 

@@ -6,12 +6,9 @@ if not gpus:
 else: 
     print(f"✅ Обнаружено {len(gpus)} GPU:") 
     for i, gpu in enumerate(gpus): 
-        print(f"  GPU {i}: {gpu}")
-    # Используем только GPU 0
-    # tf.config.set_visible_devices(gpus[0], 'GPU') 
+        print(f"  GPU {i}: {gpu}") 
     with tf.device('/GPU:0'): 
-        a = tf.random.normal([1000, 1000
-        ]) 
+        a = tf.random.normal([1000, 1000]) 
         b = tf.random.normal([1000, 1000]) 
         c = tf.matmul(a, b) 
     print("🚀 Успешно выполнено матричное умножение на GPU.") 

@@ -8,6 +8,9 @@ from collections import defaultdict
 from enums.timeframes import Timeframe
 from config.SettingsCoins import SettingsCoins
 from logger.context_logger import ContextLogger
+import platform
+import subprocess
+import re
 
 import logging
 
@@ -26,19 +29,61 @@ class Database:
     def __init__(self):
         self.connection = None
 
+    @staticmethod
+    def get_windows_ip():
+        """
+        Получить IPv4-адрес Windows из WSL, вызывая PowerShell.
+        Игнорирует IP из диапазона APIPA (169.254.x.x) и localhost (127.0.0.1).
+        Возвращает первый подходящий IP или "127.0.0.1" если не найден.
+        """
+        try:
+            if platform.system() == "Linux":
+                cmd = [
+                    "powershell.exe",
+                    "-Command",
+                    "Get-NetIPAddress -AddressFamily IPv4 | "
+                    "Where-Object { $_.IPAddress -notlike '169.254.*' -and $_.IPAddress -ne '127.0.0.1' -and $_.InterfaceAlias -notlike '*WSL*' } | "
+                    "Select-Object -ExpandProperty IPAddress"
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                ips = result.stdout.strip().splitlines()
+                for ip in ips:
+                    if ip and not ip.startswith("169.254.") and ip != "127.0.0.1":
+                        return ip
+                return "127.0.0.1"
+            elif platform.system() == "Windows":
+                return "127.0.0.1"
+            else:
+                return "127.0.0.1"
+        except Exception as e:
+            print(f"Ошибка при получении IP Windows: {e}")
+            return "127.0.0.1"
+
+    @staticmethod
+    def get_db_host():
+        system = platform.system()
+        if system == "Linux":
+            return Database.get_windows_ip()
+        elif system == "Windows":
+            return "127.0.0.1"
+        else:
+            return "127.0.0.1"
+
     def connect(self):
         try:
+            host = self.get_db_host()
             self.connection = mysql.connector.connect(
-                host=settings.DB_HOST,
+                host=host,
                 port=settings.DB_PORT,
                 user=settings.DB_USER,
                 password=settings.DB_PASSWORD,
                 database=settings.DB_NAME,
             )
             if self.connection.is_connected():
-                print(f"Успешное подключение к базе данных")
+                print(f"Успешное подключение к базе данных на хосте {host}")
         except Error as e:
             print(f"Ошибка подключения к базе: {e}")
+
 
     def close(self):
         if self.connection and self.connection.is_connected():

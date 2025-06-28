@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # <--- Отключаем GPU ДО импорта TF
+# os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # <--- Отключаем GPU ДО импорта TF
 import re
 import joblib
 import numpy as np
