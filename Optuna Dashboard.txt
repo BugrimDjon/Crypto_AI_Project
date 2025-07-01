@@ -1,0 +1,75 @@
+Методичка: Установка и запуск Optuna Dashboard
+1. Требования
+Python 3.8 или новее
+
+Optuna (рекомендуется установить заранее)
+
+2. Установка Optuna Dashboard
+Установите через pip:
+
+bash
+pip install optuna-dashboard
+Для ускорения работы можно дополнительно установить опциональные зависимости:
+
+bash
+pip install optuna-fast-fanova gunicorn
+3. Подготовка хранения результатов (Storage)
+Optuna Dashboard работает с историей оптимизации, сохранённой в базе данных.
+
+Чаще всего используется SQLite:
+
+В вашем скрипте оптимизации создайте исследование с указанием storage, например:
+
+python
+import optuna
+
+def objective(trial):
+    x = trial.suggest_float("x", -100, 100)
+    y = trial.suggest_categorical("y", [-1, 0, 1])
+    return x**2 + y
+
+study = optuna.create_study(
+    storage="sqlite:///db.sqlite3",  # путь к базе данных
+    study_name="my_study",
+    load_if_exists=True,
+    direction="minimize"
+)
+
+study.optimize(objective, n_trials=100)
+print(f"Best value: {study.best_value} (params: {study.best_params})")
+Важно, чтобы storage указывал на файл базы (например, sqlite:///путь_к_файлу.db).
+
+4. Запуск Optuna Dashboard
+После того как у вас есть база с результатами оптимизации, запустите дашборд командой:
+
+bash
+optuna-dashboard sqlite:///путь_к_файлу.db
+Пример:
+
+bash
+optuna-dashboard sqlite:///db.sqlite3
+Вы увидите в консоли:
+
+text
+Listening on http://localhost:8080/
+Hit Ctrl-C to quit.
+5. Использование
+Откройте браузер и перейдите по адресу:
+
+text
+http://localhost:8080/
+В веб-интерфейсе вы увидите список исследований (studies).
+
+Можно выбрать исследование и просмотреть аналитику, графики важности гиперпараметров, историю оптимизации и др.
+
+6. Дополнительные советы
+Если база находится на Windows-диске и вы используете WSL, указывайте путь в формате Unix, например:
+
+text
+sqlite:////mnt/d/Project_programming/for_AI/Crypto_AI_Project/results/fet_optuna.db
+Для запуска с другими типами хранилищ (например, Redis, JournalFileStorage) указывайте соответствующий URL.
+
+Для разработки из исходников потребуется Node.js v20 и сборка TypeScript, но для большинства задач достаточно установки из PyPI.
+
+Эта памятка покрывает базовые шаги для установки и запуска Optuna Dashboard. Если потребуется, могу помочь с примерами кода или настройкой под ваш проект.
+

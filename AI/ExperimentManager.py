@@ -5,6 +5,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 from datetime import datetime
 import matplotlib.pyplot as plt
+import gc
 
 class ExperimentManager:
     def __init__(self, ai_service):
@@ -28,7 +29,7 @@ class ExperimentManager:
         model_name = f"{timeframe.name}_ws{window_size}_hz{horizon}_le_ra{learning_rate}_dr{dropout}_ney{neyro}_offset{offset}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         model_path = f"models/{model_name}.h5"
         scaler_path = f"scalers/{model_name}_scalers.pkl"
-        
+        # print ("перешли в run_experiment, запускаем train_model_experiment")
         # Обучение
         model,history,batch_size, feature_scaler, target_scaler, y_true, y_pred = self.ai_service.train_model_experiment(
             table_name=table_name,
@@ -65,7 +66,11 @@ class ExperimentManager:
 
         print(f"✅ Модель сохранена: {model_path}")
         print(f"📊 MAE: {mae:.6f}, RMSE: {rmse:.6f}")
+        del model, history, y_true, y_pred
+        gc.collect()
         return mae, rmse
+        
+
 
     def _log_result(self, window_size, horizon, epochs, model_path, scaler_path, loss,val_loss, mae, rmse, learning_rate, dropout, neyro,offset,batch_size):
         df = pd.read_csv(self.results_file)

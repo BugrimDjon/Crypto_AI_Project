@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # номер NVIDIA GPU
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras import Input, Sequential
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping
@@ -20,23 +23,31 @@ from config.SettingsCoins import SettingsCoins
 from enums.AfterBefore import AfterBefore
 from logger.context_logger import ContextLogger
 import pickle
+from pympler import muppy, summary
 
 import pandas as pd
 import ta
 import json
 import logging
-import os
+
 import tensorflow as tf
 from tensorflow.keras import mixed_precision
 from sklearn.preprocessing import StandardScaler
+import logging
+import gc
+from tensorflow.keras.callbacks import Callback
+import GPUtil
+import psutil
+import time
 
-tf.debugging.experimental.enable_dump_debug_info(
-    "/tmp/tf_logs",
-    tensor_debug_mode="FULL_HEALTH",
-    circular_buffer_size=-1
-)
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # номер NVIDIA GPU
+# tf.debugging.experimental.enable_dump_debug_info(
+#     "/tmp/tf_logs",
+#     tensor_debug_mode="FULL_HEALTH",
+#     circular_buffer_size=-1
+# )
+
+
 
 # Настройка логирования
 logging.basicConfig(
@@ -48,12 +59,225 @@ logging.basicConfig(
     ],
 )
 
+class SystemMonitorCallback(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        print()
+        # Получаем температуру и загрузку GPU
+        gpus = GPUtil.getGPUs()
+        gpu_info = []
+        for gpu in gpus:
+            gpu_info.append(
+                f"GPU {gpu.id} ({gpu.name}): Temp={gpu.temperature}°C, Load={gpu.load*100:.1f}%, Mem={gpu.memoryUtil*100:.1f}%"
+            )
+        gpu_status = " | ".join(gpu_info) if gpu_info else "GPU info not available"
+
+        # Получаем температуру CPU (если доступна)
+        temps = psutil.sensors_temperatures()
+        cpu_temps = temps.get('coretemp') or temps.get('cpu_thermal') or []
+        cpu_temp_str = ", ".join([f"{t.label or 'CPU'}: {t.current}°C" for t in cpu_temps]) if cpu_temps else "CPU temp info not available"
+
+        print(f"[Epoch {epoch + 1}] {gpu_status} | {cpu_temp_str}")
+        if gpu.temperature>70:
+            time.sleep(20)
+
+
+
 class AIModelService:
     def __init__(self, db: Database) -> None:
         self.model = None
         self.feature_scaler = None
         self.target_scaler = None
         self.db = db
+
+    def train_model_experiment(
+        self,
+        table_name: Coins,
+        time_frame: Timeframe,
+        limit: int = 1000000,
+        window_size: int = 60,
+        horizon: int = 1,
+        model_path=None,
+        scaler_path=None,
+        return_predictions=False,
+        epochs: int = 50,
+        learning_rate: float = 0.001,  # регулируем
+        dropout: float = 0.2,  # регулируем
+        neyro: int = 64,
+        df_ready=None,
+        offset=None,
+        batch_size=64
+    ):
+        
+        # tf.debugging.set_log_device_placement(True)  # Включаем логирование размещения операций
+
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            try:
+                tf.config.set_visible_devices(gpus[0], 'GPU')
+                tf.config.experimental.set_memory_growth(gpus[0], True)
+            except RuntimeError as e:
+                print("Ошибка при настро    йке GPU:", e)
+        
+        mixed_precision.set_global_policy('mixed_float16')
+
+        if df_ready is None:
+            query = f""" SELECT ts, o, h, l, c,
+                        vol, volCcy, volCcyQuote,
+                        ma50, ma200, ema12, ema26,
+                        macd, macd_signal, rsi14, macd_histogram,
+                        stochastic_k, stochastic_d
+                    FROM {table_name.value}
+                            where timeFrame=%s and ts>=%s
+                            ORDER BY ts ASC
+                            limit %s;
+                    """
+            params = (time_frame.label, 0, limit)
+            rows = self.db.query_to_bd(query, params)
+
+            columns = [
+                "ts","o", "h", "l", "c", "vol", "volCcy", "volCcyQuote", "ma50", "ma200", "ema12",
+                "ema26", "macd", "macd_signal", "rsi14", "macd_histogram", "stochastic_k", "stochastic_d", ]
+            df = pd.DataFrame(rows, columns=columns)
+        else:
+            df=df_ready.copy()
+            df = df.drop(columns=["offset"])
+
+        # Целевая — следующая цена закрытия
+        df["target"] = df["c"].shift(-horizon)
+        df.dropna(inplace=True)
+
+        features = df.drop(columns=["ts", "target"])
+
+        feature_scaler = MinMaxScaler()
+        target_scaler = MinMaxScaler()
+        # feature_scaler = StandardScaler()
+        # target_scaler = StandardScaler()
+        # print("target_scaler = StandardScaler()")
+
+        # масштабирование
+        features_scaled = feature_scaler.fit_transform(features)
+        target_scaled = target_scaler.fit_transform(df[["target"]])
+        # print("target_scaled = target_scaler.fit_transform(df[['target']])")
+
+        def create_sequences(X, y, window_size, horizon):
+            Xs, ys = [], []
+            for i in range(len(X) - window_size - horizon + 1):
+                Xs.append(X[i : (i + window_size)])
+                ys.append(y[i + window_size + horizon - 1])
+            return np.array(Xs), np.array(ys)
+
+        # window_size = 60
+        X_lstm, y_lstm = create_sequences(
+            features_scaled, target_scaled, window_size, horizon
+        )
+        # print("X_lstm, y_lstm = create_sequences")
+        
+        split_idx = int(0.8 * len(X_lstm))
+        X_train, X_test = X_lstm[:split_idx], X_lstm[split_idx:]
+        y_train, y_test = y_lstm[:split_idx], y_lstm[split_idx:]
+
+        del X_lstm, y_lstm
+
+
+        X_train = X_train.astype(np.float32)
+        y_train = y_train.astype(np.float32)
+        X_test = X_test.astype(np.float32)
+        y_test = y_test.astype(np.float32)
+
+        # ---- Добавлено: перемешивание обучающей выборки ----
+        indices = np.arange(len(X_train))
+        np.random.shuffle(indices)
+        X_train = X_train[indices]
+        y_train = y_train[indices]
+        # ------------------------------------------------------
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+      
+        # # Начало Линивая загрузка
+        # def data_generator():
+        #     for x, y in zip(X_train.astype(np.float16), y_train.astype(np.float16)):
+        #         yield x, y
+
+        # train_dataset = tf.data.Dataset.from_generator(
+        #     data_generator,
+        #     output_signature=(
+        #         tf.TensorSpec(shape=(X_train.shape[1], X_train.shape[2]), dtype=tf.float32),
+        #         tf.TensorSpec(shape=(1,), dtype=tf.float32),
+        #     )
+        # )
+        # # Конец Линивая загрузка
+
+        # train_dataset = train_dataset.cache()
+        # train_dataset = train_dataset.cache(filename='cache.tf-data')
+
+        # перемешиваем Выбрали перемешивание выше
+        # train_dataset = train_dataset.shuffle(buffer_size=1024)
+
+        # формируем батчи
+        train_dataset = train_dataset.batch(batch_size)
+
+        # print("→ prefetch")
+        # train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+        val_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+        # print("Делаем val_dataset = val_dataset.batch(batch_size)")
+        val_dataset = val_dataset.batch(batch_size)
+        # val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+
+        model = Sequential([
+            Input(shape=(X_train.shape[1], X_train.shape[2])),
+            LSTM(neyro, return_sequences=True, implementation=1),
+            LSTM(neyro // 2, return_sequences=False, implementation=1),
+            Dropout(dropout),
+            Dense(32, activation="relu"),
+            Dense(1, dtype='float32')
+        ])
+
+        model.compile(optimizer=Adam(learning_rate), loss="mse")
+
+        early_stop = EarlyStopping(
+            monitor="val_loss", patience=3, restore_best_weights=True
+        )
+        # print("=== Начинаем model.fit ===")
+        try:
+            history = model.fit(
+                train_dataset,
+                epochs=epochs,
+                validation_data=val_dataset,
+                callbacks=[early_stop, SystemMonitorCallback()],
+                verbose=1,
+            )
+        except Exception as e:
+            import traceback
+            print(f"Ошибка при обучении: {e}")
+            traceback.print_exc()
+            # Освобождаем ресурсы при ошибке
+            tf.keras.backend.clear_session()
+            gc.collect()
+            raise  # Перебрасываем исключение дальше
+        # print("=== Обучение завершено ===")
+        loss = model.evaluate(X_test, y_test)
+        print(f"Final loss (MSE) on test set: {loss}")
+
+        model.save(model_path)
+        with open(scaler_path, "wb") as f:
+            pickle.dump((feature_scaler, target_scaler), f)
+
+        if return_predictions:
+            # y_pred = model.predict(X_test)
+            # test_dataset = tf.data.Dataset.from_tensor_slices(X_test.astype('float32')).batch(batch_size)
+            # y_pred = model.predict(test_dataset)
+            y_pred = model.predict(X_test, batch_size=batch_size)
+            y_pred = target_scaler.inverse_transform(y_pred)
+            y_true = target_scaler.inverse_transform(y_test)
+            del features, features_scaled, target_scaled, df
+            gc.collect()
+            # all_objects = muppy.get_objects()
+            # sum1 = summary.summarize(all_objects)
+            # summary.print_(sum1)
+            return model,history,batch_size, feature_scaler, target_scaler, y_true, y_pred
+        return model,history,batch_size, feature_scaler, target_scaler
+
+
+
 
     def train_model_experiment_old(
         self,
@@ -181,168 +405,8 @@ class AIModelService:
 
     
     
-    def train_model_experiment(
-        self,
-        table_name: Coins,
-        time_frame: Timeframe,
-        limit: int = 1000000,
-        window_size: int = 60,
-        horizon: int = 1,
-        model_path=None,
-        scaler_path=None,
-        return_predictions=False,
-        epochs: int = 50,
-        learning_rate: float = 0.001,  # регулируем
-        dropout: float = 0.2,  # регулируем
-        neyro: int = 64,
-        df_ready=None,
-        offset=None,
-        batch_size=64
-    ):
-        # tf.debugging.set_log_device_placement(True)
-        # print("Built with CUDA:", tf.test.is_built_with_cuda())
-        # print("Built with cuDNN:", tf.test.is_built_with_gpu_support())
-
-          # tf.debugging.set_log_device_placement(True)  # Включаем логирование размещения операций
-
-        mixed_precision.set_global_policy('mixed_float16')
-
-        gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
-            try:
-                tf.config.set_visible_devices(gpus[0], 'GPU')
-                tf.config.experimental.set_memory_growth(gpus[0], True)
-            except RuntimeError as e:
-                print("Ошибка при настройке GPU:", e)
-
-        if df_ready is None:
-            query = f""" SELECT ts, o, h, l, c,
-                        vol, volCcy, volCcyQuote,
-                        ma50, ma200, ema12, ema26,
-                        macd, macd_signal, rsi14, macd_histogram,
-                        stochastic_k, stochastic_d
-                    FROM {table_name.value}
-                            where timeFrame=%s and ts>=%s
-                            ORDER BY ts ASC
-                            limit %s;
-                    """
-            params = (time_frame.label, 0, limit)
-            rows = self.db.query_to_bd(query, params)
-
-            columns = [
-                "ts","o", "h", "l", "c", "vol", "volCcy", "volCcyQuote", "ma50", "ma200", "ema12",
-                "ema26", "macd", "macd_signal", "rsi14", "macd_histogram", "stochastic_k", "stochastic_d", ]
-            df = pd.DataFrame(rows, columns=columns)
-        else:
-            df=df_ready.copy()
-            df = df.drop(columns=["offset"])
-
-        # Целевая — следующая цена закрытия
-        df["target"] = df["c"].shift(-horizon)
-        df.dropna(inplace=True)
-
-        features = df.drop(columns=["ts", "target"])
-
-        # feature_scaler = MinMaxScaler()
-        # target_scaler = MinMaxScaler()
-        feature_scaler = StandardScaler()
-        target_scaler = StandardScaler()
-
-        features_scaled = feature_scaler.fit_transform(features)
-        target_scaled = target_scaler.fit_transform(df[["target"]])
-
-        def create_sequences(X, y, window_size, horizon):
-            Xs, ys = [], []
-            for i in range(len(X) - window_size - horizon + 1):
-                Xs.append(X[i : (i + window_size)])
-                ys.append(y[i + window_size + horizon - 1])
-            return np.array(Xs), np.array(ys)
-
-        # window_size = 60
-        X_lstm, y_lstm = create_sequences(
-            features_scaled, target_scaled, window_size, horizon
-        )
-        
-        split_idx = int(0.8 * len(X_lstm))
-        X_train, X_test = X_lstm[:split_idx], X_lstm[split_idx:]
-        y_train, y_test = y_lstm[:split_idx], y_lstm[split_idx:]
-
-        X_train = X_train.astype(np.float32)
-        y_train = y_train.astype(np.float32)
-        X_test = X_test.astype(np.float32)
-        y_test = y_test.astype(np.float32)
-
-        # # ---- Добавлено: перемешивание обучающей выборки ----
-        # indices = np.arange(len(X_train))
-        # np.random.shuffle(indices)
-        # X_train = X_train[indices]
-        # y_train = y_train[indices]
-        # # ------------------------------------------------------
-
-        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-        train_dataset = train_dataset.cache()
-        # train_dataset = train_dataset.cache(filename='cache.tf-data')
-        train_dataset = train_dataset.shuffle(buffer_size=1024)
-        train_dataset = train_dataset.batch(batch_size)
-        train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
-
-        val_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
-        val_dataset = val_dataset.batch(batch_size)
-        val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
-       
-        # strategy = tf.distribute.MirroredStrategy(devices=["/gpu:0"])
-        # with strategy.scope():
-        # Принудительно размещаем операции на GPU
     
-        model = Sequential([
-            LSTM(neyro, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2]), implementation=1),
-            LSTM(neyro // 2, return_sequences=False, implementation=1),
-            Dropout(dropout),
-            Dense(32, activation="relu"),
-            Dense(1, dtype='float32')
-        ])
 
-
-
-
-    # print("LSTM implementation:", layer.implementation)
-        model.compile(optimizer=Adam(learning_rate), loss="mse")
-
-        early_stop = EarlyStopping(
-            monitor="val_loss", patience=3, restore_best_weights=True
-        )
-        for layer in model.layers:
-            for weight in layer.weights:
-                print(f"{weight.name} -> {weight.device}")
-        print(f"GPU available: {tf.config.list_physical_devices('GPU')}")
-        print(X_train.dtype, y_train.dtype)  # должны быть float32
-        print(model.layers[0].get_config())
-        print(model.layers[1].get_config())
-
-
-        history = model.fit(
-            train_dataset,
-            epochs=epochs,
-            validation_data=val_dataset,
-            callbacks=[early_stop],
-            verbose=1,
-        )
-
-        loss = model.evaluate(X_test, y_test)
-        print(f"Final loss (MSE) on test set: {loss}")
-
-        model.save(model_path)
-        with open(scaler_path, "wb") as f:
-            pickle.dump((feature_scaler, target_scaler), f)
-
-        if return_predictions:
-            # y_pred = model.predict(X_test)
-            test_dataset = tf.data.Dataset.from_tensor_slices(X_test.astype('float32')).batch(batch_size)
-            y_pred = model.predict(test_dataset)
-            y_pred = target_scaler.inverse_transform(y_pred)
-            y_true = target_scaler.inverse_transform(y_test)
-            return model,history,batch_size, feature_scaler, target_scaler, y_true, y_pred
-        return model,history,batch_size, feature_scaler, target_scaler
 
     def train_model_experiment_where_predictions(
         self,

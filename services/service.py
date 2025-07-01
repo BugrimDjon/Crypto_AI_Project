@@ -29,14 +29,17 @@ from Reports.reports import Reports
 from MathCandles.mathCandles import MathCandles
 import tensorflow as tf
 import optuna
-
+import gc
+from joblib import parallel_backend
 
 
 import pandas as pd
 import ta
 import json
 import logging
-import os
+import os, psutil
+import sys
+import time
 
 # Настройка логирования
 logging.basicConfig(
@@ -55,21 +58,34 @@ class Servise:
         self.ai_service = AIModelService(db)
         self.reports_servise=Reports(db)
 
+    @staticmethod
+    def print_full_mem_info(tag=""):
+        process = psutil.Process(os.getpid())
+        mem = process.memory_info().rss / 1024 / 1024
+        swap = psutil.swap_memory()
+        print(f"[{tag}] RAM: {mem:.2f} MB | SWAP: {swap.used / 1024 / 1024:.2f} MB")
 
-    def run_optuna_search(self, df_ready, n_trials=30):
+
+
+    def run_optuna_search(self, df_ready, n_trials=100):
         def objective(trial):
+            # print(f"Запуск trial в процессе PID: {os.getpid()}")
+            self.print_full_mem_info(tag="Состояние памяти (начало trial)")
+            
             learning_rate = trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True)
-            dropout = trial.suggest_float("dropout", 0.001, 0.05)
-            neyro = trial.suggest_categorical("neyro", [256, 384])
-
-            batch_size = 32 if neyro > 300 else 64
+            dropout = trial.suggest_float("dropout", 0.001, 0.1)
+            neyro = trial.suggest_categorical("neyro", [64,128,256])
+            batch_size=trial.suggest_categorical("batch_size",[32, 64, 128])
+            window_size=trial.suggest_categorical("window_size",[180, 240])
+                                                  
+            # batch_size = 64 if neyro > 300 else 128
 
             manager = ExperimentManager(self.ai_service)
-
+            # print ("оптуна запускает run_experiment")
             mae, rmse = manager.run_experiment(
                 table_name=Coins.FET,
                 timeframe=Timeframe._4hour,
-                window_size=240,
+                window_size=window_size,
                 horizon=24,
                 epochs=70,
                 learning_rate=learning_rate,
@@ -80,20 +96,34 @@ class Servise:
                 batch_size=batch_size,
             )
             tf.keras.backend.clear_session()
+            del manager
+            gc.collect()
+            self.print_full_mem_info(tag="Состояние памяти (после очистки)")
 
             return rmse  # Можно заменить на mae или val_loss
 
         storage_path = "results/fet_optuna.db"
         storage_url = f"sqlite:///{storage_path}"
         
+        
         study = optuna.create_study(
             direction="minimize",
+            pruner=optuna.pruners.MedianPruner(),  # Отсечение плохих вариантов
             study_name="fet_study",
             storage=storage_url,
             load_if_exists=True
         )
 
-        study.optimize(objective, n_trials=n_trials)
+        def after_trial_callback(study, trial):
+                # time.sleep(2)
+                if (trial.number + 1) % 4 == 0:
+                    print(f"Остановка после trial #{trial.number + 1}")
+                    sys.exit(0)
+                    # study.stop()
+            
+
+        study.optimize(objective, n_trials=n_trials, n_jobs=1,  callbacks=[after_trial_callback])
+            # logging.debug
 
         print("\n🥇 Лучшие параметры:", study.best_params)
         return study
@@ -101,6 +131,7 @@ class Servise:
 
     def ai_expirement(self,use_optuna=False):
         import tensorflow as tf
+        # print("зашли в ai_expirement ")
         tf.config.threading.set_intra_op_parallelism_threads(4)
         tf.config.threading.set_inter_op_parallelism_threads(4)
         current_tf=Timeframe._4hour
@@ -118,6 +149,7 @@ class Servise:
         columns = [
                     "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote"
                 ]
+        print ("считали данные из БД")
         df_1min = pd.DataFrame(rows, columns=columns)
         df_1min = df_1min.sort_values("ts").reset_index(drop=True)
         amount=list(range(0,current_tf.minutes,offset))
@@ -126,6 +158,7 @@ class Servise:
         df = math_candle.generate_multi_shift_features(df_1min,current_tf , amount)
         df = df.sort_values("ts").reset_index(drop=True)
         del df_1min
+        # print("подготовили данные")
         
         # ✅ Укажи путь, куда сохранить
         # save_path = "D:/Project_programming/for_AI/Crypto_AI_Project/Colab/df_ready.pkl"  # если синхронизируется с Google Drive

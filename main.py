@@ -8,7 +8,6 @@ from tensorflow.keras.layers import LSTM, Dense
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 import joblib
-from tensorflow.keras.models import load_model, Sequential
 from Reports.reports import Reports
 from datetime import datetime, timedelta
 import tensorflow as tf
@@ -104,13 +103,13 @@ while 1:
 
     
 
-    try:
-        button = int(input(menu).strip())
-    except ValueError:
-        print("⚠️ Пожалуйста, введите число.")
-        continue
+    # try:
+    #     button = int(input(menu).strip())
+    # except ValueError:
+    #     print("⚠️ Пожалуйста, введите число.")
+    #     continue
 
-    # button =4
+    button =4
     if button==1:
     
         # run_servis.load_model_and_scalers()

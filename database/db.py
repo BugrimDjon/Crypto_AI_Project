@@ -33,31 +33,45 @@ class Database:
     def get_windows_ip():
         """
         Получить IPv4-адрес Windows из WSL, вызывая PowerShell.
-        Игнорирует IP из диапазона APIPA (169.254.x.x) и localhost (127.0.0.1).
-        Возвращает первый подходящий IP или "127.0.0.1" если не найден.
+        Возвращает первый подходящий IP (обычно из Wi-Fi или Ethernet),
+        игнорирует IP из диапазонов APIPA (169.254.x.x), localhost (127.0.0.1),
+        виртуальные и туннельные адаптеры (WSL, Hyper-V и др.).
+        Если не найден - возвращает "127.0.0.1".
         """
         try:
             if platform.system() == "Linux":
+                # PowerShell команда получает список IP-адресов, исключая ненужные
                 cmd = [
                     "powershell.exe",
                     "-Command",
-                    "Get-NetIPAddress -AddressFamily IPv4 | "
-                    "Where-Object { $_.IPAddress -notlike '169.254.*' -and $_.IPAddress -ne '127.0.0.1' -and $_.InterfaceAlias -notlike '*WSL*' } | "
-                    "Select-Object -ExpandProperty IPAddress"
+                    r"""
+                    Get-NetIPAddress -AddressFamily IPv4 |
+                    Where-Object {
+                        $_.IPAddress -notlike '169.254.*' -and
+                        $_.IPAddress -ne '127.0.0.1' -and
+                        $_.InterfaceAlias -notmatch 'vEthernet|WSL|Loopback|Virtual|Tunnel'
+                    } |
+                    Select-Object -ExpandProperty IPAddress
+                    """
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 ips = result.stdout.strip().splitlines()
                 for ip in ips:
-                    if ip and not ip.startswith("169.254.") and ip != "127.0.0.1":
+                    ip = ip.strip()
+                    # Дополнительная проверка формата IP, на всякий случай
+                    if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip):
                         return ip
                 return "127.0.0.1"
+
             elif platform.system() == "Windows":
+                # Если запускается из Windows напрямую, вернуть localhost
                 return "127.0.0.1"
             else:
                 return "127.0.0.1"
         except Exception as e:
             print(f"Ошибка при получении IP Windows: {e}")
             return "127.0.0.1"
+        
 
     @staticmethod
     def get_db_host():
