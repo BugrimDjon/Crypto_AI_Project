@@ -16,7 +16,7 @@ except Exception as e:
 
 
 class ModelManager:
-    def __init__(self, base_dir="./top_models2"):
+    def __init__(self, base_dir="./top_models3"):
         """
         Инициализация класса — задаём путь до папок с моделями и скейлерами.
         """
@@ -45,7 +45,8 @@ class ModelManager:
         Внутренний метод — извлекает параметры из имени файла.
         Используется регулярное выражение для разбора имени.
         """
-        pattern = r"(?P<tf>_(1min|5min|10min|15min|30min|1hour|4hour|1day|1week))_ws(?P<ws>\d+)_hz(?P<hz>\d+)_le_ra(?P<ra>[\d.]+)_dr(?P<dr>[\d.]+)_ney(?P<ney>\d+)(?:_offset(?P<offset>\d+))?"
+        # pattern = r"(?P<tf>_(1min|5min|10min|15min|30min|1hour|4hour|1day|1week))_ws(?P<ws>\d+)_hz(?P<hz>\d+)_le_ra(?P<ra>[\d.]+)_dr(?P<dr>[\d.]+)_ney(?P<ney>\d+)(?:_offset(?P<offset>\d+))?"
+        pattern = r"(?P<tf>_(1min|5min|10min|15min|30min|1hour|4hour|1day|1week))_ws(?P<ws>\d+)_hz(?P<hz>\d+)_le_ra(?P<ra>[\deE\+\-\.]+)_dr(?P<dr>[\d.]+)_ney(?P<ney>\d+)(?:_offset(?P<offset>\d+))?"
 
         match = re.search(pattern, filename)
         if not match:
