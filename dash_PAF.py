@@ -5,7 +5,7 @@ from dash import Dash, dcc, html, Input, Output, State
 import os
 
 CSV_FOLDER = './out'
-DEFAULT_FILE = '2025_6.csv'
+DEFAULT_FILE = '2025_7.csv'
 
 app = Dash(__name__)
 app.title = "Price and Forecasts"

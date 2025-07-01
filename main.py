@@ -103,13 +103,13 @@ while 1:
 
     
 
-    # try:
-    #     button = int(input(menu).strip())
-    # except ValueError:
-    #     print("⚠️ Пожалуйста, введите число.")
-    #     continue
+    try:
+        button = int(input(menu).strip())
+    except ValueError:
+        print("⚠️ Пожалуйста, введите число.")
+        continue
 
-    button =4
+    # button =4
     if button==1:
     
         # run_servis.load_model_and_scalers()

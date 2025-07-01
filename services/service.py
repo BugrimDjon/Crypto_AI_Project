@@ -115,11 +115,12 @@ class Servise:
         )
 
         def after_trial_callback(study, trial):
-                # time.sleep(2)
-                if (trial.number + 1) % 4 == 0:
-                    print(f"Остановка после trial #{trial.number + 1}")
-                    sys.exit(0)
-                    # study.stop()
+                # # time.sleep(2)
+                # if (trial.number + 1) % 4 == 0:
+                #     print(f"Остановка после trial #{trial.number + 1}")
+                #     sys.exit(0)
+                #     # study.stop()
+            x=0
             
 
         study.optimize(objective, n_trials=n_trials, n_jobs=1,  callbacks=[after_trial_callback])
