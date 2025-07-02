@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras import Input, Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, GRU
+from tensorflow.keras import Input, Sequential, regularizers
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping
@@ -96,6 +96,7 @@ class AIModelService:
         limit: int = 1000000,
         window_size: int = 60,
         horizon: int = 1,
+        l2_reg=None,
         model_path=None,
         scaler_path=None,
         return_predictions=False,
@@ -222,19 +223,29 @@ class AIModelService:
         val_dataset = val_dataset.batch(batch_size)
         # val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
 
+        # model = Sequential([
+        #     Input(shape=(X_train.shape[1], X_train.shape[2])),
+        #     LSTM(neyro, return_sequences=True, implementation=1),
+        #     LSTM(neyro // 2, return_sequences=False, implementation=1),
+        #     Dropout(dropout),
+        #     Dense(32, activation="relu"),
+        #     Dense(1, dtype='float32')
+        # ])
         model = Sequential([
             Input(shape=(X_train.shape[1], X_train.shape[2])),
-            LSTM(neyro, return_sequences=True, implementation=1),
-            LSTM(neyro // 2, return_sequences=False, implementation=1),
+            GRU(neyro, return_sequences=True, 
+                kernel_regularizer=regularizers.l2(l2_reg), implementation=1),
+            GRU(neyro // 2, return_sequences=False, 
+                kernel_regularizer=regularizers.l2(l2_reg), implementation=1),
             Dropout(dropout),
-            Dense(32, activation="relu"),
+            Dense(32, activation="relu", kernel_regularizer=regularizers.l2(l2_reg)),
             Dense(1, dtype='float32')
         ])
 
         model.compile(optimizer=Adam(learning_rate), loss="mse")
 
         early_stop = EarlyStopping(
-            monitor="val_loss", patience=3, restore_best_weights=True
+            monitor="val_loss", patience=5, restore_best_weights=True
         )
         # print("=== Начинаем model.fit ===")
         try:

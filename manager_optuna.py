@@ -2,7 +2,7 @@ import subprocess
 import time
 
 counter = 0
-max_runs = 9  # 100 / 5
+max_runs = 50  # 100 / 5
 
 while True:
     counter += 1

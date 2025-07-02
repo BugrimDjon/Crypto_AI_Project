@@ -24,7 +24,7 @@ class ExperimentManager:
         ])
         df.to_csv(self.results_file, index=False)
 
-    def run_experiment(self, table_name, timeframe, window_size, horizon,
+    def run_experiment(self, table_name, timeframe, window_size, horizon,l2_reg,
                        epochs=50, learning_rate=0.001, dropout=0.2, neyro=64, df_ready=None,offset=None,batch_size=64,):
         model_name = f"{timeframe.name}_ws{window_size}_hz{horizon}_le_ra{learning_rate}_dr{dropout}_ney{neyro}_offset{offset}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         model_path = f"models/{model_name}.h5"
@@ -36,6 +36,7 @@ class ExperimentManager:
             time_frame=timeframe,
             window_size=window_size,
             horizon=horizon,
+            l2_reg=l2_reg,
             epochs=epochs,
             model_path=model_path,
             scaler_path=scaler_path,

@@ -53,6 +53,8 @@ logging.basicConfig(
 
 
 class Servise:
+    STOP_STUDY = "/mnt/d/Project_programming/for_AI/Crypto_AI_Project/STOP_STUDY"
+    
     def __init__(self, db: Database) -> None:
         self.db = db
         self.ai_service = AIModelService(db)
@@ -67,7 +69,7 @@ class Servise:
 
 
 
-    def run_optuna_search(self, df_ready, n_trials=100):
+    def run_optuna_search(self, df_ready, offset, n_trials=100):
         def objective(trial):
             # print(f"Запуск trial в процессе PID: {os.getpid()}")
             self.print_full_mem_info(tag="Состояние памяти (начало trial)")
@@ -76,8 +78,11 @@ class Servise:
             dropout = trial.suggest_float("dropout", 0.001, 0.1)
             neyro = trial.suggest_categorical("neyro", [64,128,256])
             batch_size=trial.suggest_categorical("batch_size",[32, 64, 128])
-            window_size=trial.suggest_categorical("window_size",[180, 240])
-                                                  
+            window_size=trial.suggest_categorical("window_size",[int(24*60/offset), int(48*60/offset)])
+            horizon=trial.suggest_categorical("horizon",[int(4*60/offset), int(6*60/offset), int(8*60/offset)])
+            l2_reg = trial.suggest_float("l2", 1e-6, 1e-3, log=True)
+
+
             # batch_size = 64 if neyro > 300 else 128
 
             manager = ExperimentManager(self.ai_service)
@@ -86,13 +91,14 @@ class Servise:
                 table_name=Coins.FET,
                 timeframe=Timeframe._4hour,
                 window_size=window_size,
-                horizon=24,
+                horizon=horizon,
+                l2_reg=l2_reg,
                 epochs=70,
                 learning_rate=learning_rate,
                 dropout=dropout,
                 neyro=neyro,
                 df_ready=df_ready,
-                offset=10,
+                offset=offset,
                 batch_size=batch_size,
             )
             tf.keras.backend.clear_session()
@@ -115,15 +121,16 @@ class Servise:
         )
 
         def after_trial_callback(study, trial):
+            if os.path.exists(self.STOP_STUDY):
+                study.stop()
                 # # time.sleep(2)
-                # if (trial.number + 1) % 4 == 0:
+                # if (trial.number + 1) % 2 == 0:
                 #     print(f"Остановка после trial #{trial.number + 1}")
                 #     sys.exit(0)
                 #     # study.stop()
-            x=0
-            
+            # x=0
 
-        study.optimize(objective, n_trials=n_trials, n_jobs=1,  callbacks=[after_trial_callback])
+        study.optimize(objective, n_trials=n_trials, n_jobs=3,  callbacks=[after_trial_callback])
             # logging.debug
 
         print("\n🥇 Лучшие параметры:", study.best_params)
@@ -137,7 +144,7 @@ class Servise:
         tf.config.threading.set_inter_op_parallelism_threads(4)
         current_tf=Timeframe._4hour
         current_coins=Coins.FET
-        offset=10
+        offset=60   
         table_name=current_coins
         limit=1000000
         
@@ -166,7 +173,7 @@ class Servise:
 
         if use_optuna:
             # from optuna_exp import run_optuna_search
-            self.run_optuna_search(df_ready=df)
+            self.run_optuna_search(df_ready=df, offset=offset)
             return  # Завершаем после Optuna
 
 
@@ -313,14 +320,16 @@ class Servise:
 #                 # actual_df["ts"] = pd.to_datetime(actual_df["ts"])
 
         current_timefreme=Timeframe._1min
+        current_offset=0
         # перебор всех моделей которые находятся в папке топ
         for id_row, row in model_results_df.iterrows():
-            # если текущий таймфрейм совпадает с предыдущим, то пересчитывать данные не надо
-            if current_timefreme!=row["timeframe_enum"]:
+            # если текущий таймфрейм или оффсет совпадает с предыдущими, то пересчитывать данные не надо
+            if current_timefreme!=row["timeframe_enum"] or current_offset!=row["offset"]:
                 # если таймфрейм >= 5 минут то произведем перерачсет данных
                 if row["timeframe_enum"].minutes>= 5:
-                    amount=list(range(0,int(row["timeframe_enum"].minutes),row["offset"]))
+                    current_offset=row["offset"]
                     current_timefreme=row["timeframe_enum"]
+                    amount=list(range(0,int(row["timeframe_enum"].minutes),row["offset"]))
                     df = math_candle.generate_multi_shift_features(df_1min,row["timeframe_enum"] , amount)
                     df = df.sort_values("ts").reset_index(drop=True)
 
