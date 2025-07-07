@@ -31,6 +31,7 @@ import tensorflow as tf
 import optuna
 import gc
 from joblib import parallel_backend
+from sklearn.feature_selection import SelectKBest, f_regression, mutual_info_regression
 
 
 import pandas as pd
@@ -67,54 +68,111 @@ class Servise:
         swap = psutil.swap_memory()
         print(f"[{tag}] RAM: {mem:.2f} MB | SWAP: {swap.used / 1024 / 1024:.2f} MB")
 
+    
 
 
-    def run_optuna_search(self, df_ready, offset, n_trials=100):
+
+    def run_optuna_search(self, df_ready, offset, n_trials=300):
         def objective(trial):
-            # print(f"Запуск trial в процессе PID: {os.getpid()}")
             self.print_full_mem_info(tag="Состояние памяти (начало trial)")
+
+            timeframe = Timeframe._1hour
+            learning_rate = trial.suggest_float("learning_rate", 2e-5, 8e-4, log=True)
+            # learning_rate = trial.suggest_float("learning_rate", 2e-5, 5e-4, log=True)
+            dropout = trial.suggest_float("dropout", 0.1, 0.5)
+            neyro = trial.suggest_categorical("neyro", 16, 64, step=16)
+            batch_size = trial.suggest_categorical("batch_size", [32, 64,128])
+            window_size = trial.suggest_categorical("window_size", [48, 72, 96])
+            horizon = trial.suggest_categorical("horizon", [1, 2])
+            l2_reg = trial.suggest_float("l2", 1e-4, 1e-2, log=True)
+            target_type = trial.suggest_categorical("target_type", [1, 4])#, 1, 2, 3, 4])
+                
             
-            learning_rate = trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True)
-            dropout = trial.suggest_float("dropout", 0.001, 0.1)
-            neyro = trial.suggest_categorical("neyro", [64,128,256])
-            batch_size=trial.suggest_categorical("batch_size",[32, 64, 128])
-            window_size=trial.suggest_categorical("window_size",[int(24*60/offset), int(48*60/offset)])
-            horizon=trial.suggest_categorical("horizon",[int(4*60/offset), int(6*60/offset), int(8*60/offset)])
-            l2_reg = trial.suggest_float("l2", 1e-6, 1e-3, log=True)
 
+       # === Добавляем отбор признаков ===
+            # Исключаем признаки, напрямую завязанные на цену
+            price_related = ["c",]# "h", "l","ema12","o",
+            #        "ma50", "ma200",  "ema26",
+            #     "price_ma50_diff", "price_ema12_diff", "ma_diff_50_200",
+            #     "ma_ratio_50_200", "ma50_slope", "ma_cross_signal", "rsi14",
+            # "volCcy", "volCcyQuote" , "vol", "roc_5", "momentum_10"]
+            df_filtered = df_ready.copy().drop(columns=["offset"], errors="ignore")
 
-            # batch_size = 64 if neyro > 300 else 128
+            # Целевой таргет: (future - now) / now
+            # y = (df_filtered["c"].shift(-horizon) - df_filtered["c"]) / df_filtered["c"]
+            # y = np.log(df_filtered["c"].shift(-horizon) / df_filtered["c"])
+            y = np.log(df_filtered["c"].shift(-horizon)) 
+            y = y.dropna()
+
+            # Формируем X, исключая ts, target и price_related
+            X = df_filtered.drop(columns=["ts", "target"] + price_related, errors="ignore")
+            X = X.iloc[:len(y)]  # Уравниваем длины
+
+                # Анализ корреляции
+            correlations = {}
+            for col in X.columns:
+                correlations[col] = df_filtered[col].corr(df_filtered["c"])
+            sorted_corr = sorted(correlations.items(), key=lambda x: abs(x[1]), reverse=True)
+            print("📊 Корреляция признаков с текущей ценой (c):")
+            for name, value in sorted_corr:
+                print(f"{name:20s}: {value:.5f}")
+
+            # Отбор признаков
+            k_best = trial.suggest_int("k_best", 6, min(20, X.shape[1]))  # Можно до 20
+            selector = SelectKBest(score_func=mutual_info_regression, k=k_best)
+            X_selected = selector.fit_transform(X, y)
+
+             # Добавим шум
+            add_noise = False
+            if add_noise:
+                X_selected += np.random.normal(0, 0.01, size=X_selected.shape)
+            # Конец Добавим шум
+
+            selected_features = X.columns[selector.get_support()].tolist()
+            # Собираем финальный df_ready с отобранными признаками + c (для таргета)
+            df_selected = df_ready[["ts"] + selected_features + ["c"]].copy()
+
+            # Подменим c
+            replace_c = False
+            if replace_c:
+                df_selected["c"] = 100
+            # Конец  Подменим c
 
             manager = ExperimentManager(self.ai_service)
-            # print ("оптуна запускает run_experiment")
-            mae, rmse = manager.run_experiment(
+            mae, rmse,corr_with_now, corr_with_future = manager.run_experiment(
                 table_name=Coins.FET,
-                timeframe=Timeframe._4hour,
+                timeframe=timeframe,
                 window_size=window_size,
                 horizon=horizon,
                 l2_reg=l2_reg,
-                epochs=70,
+                epochs=500,
                 learning_rate=learning_rate,
                 dropout=dropout,
                 neyro=neyro,
-                df_ready=df_ready,
+                df_ready=df_selected,
                 offset=offset,
                 batch_size=batch_size,
+                selected_features=selected_features,
+                target_type = target_type,
             )
+
             tf.keras.backend.clear_session()
             del manager
             gc.collect()
-            self.print_full_mem_info(tag="Состояние памяти (после очистки)")
 
-            return rmse  # Можно заменить на mae или val_loss
+            self.print_full_mem_info(tag="Состояние памяти (после очистки)")
+            if abs(corr_with_now) > 0.85:
+                print ("Слишком высокая корреляция с текущей ценой")
+                raise optuna.exceptions.TrialPruned("Слишком высокая корреляция с текущей ценой")
+
+            return rmse, -corr_with_future 
 
         storage_path = "results/fet_optuna.db"
         storage_url = f"sqlite:///{storage_path}"
-        
-        
+
         study = optuna.create_study(
-            direction="minimize",
-            pruner=optuna.pruners.MedianPruner(),  # Отсечение плохих вариантов
+            directions=["minimize","minimize"],
+            pruner=optuna.pruners.MedianPruner(),
             study_name="fet_study",
             storage=storage_url,
             load_if_exists=True
@@ -123,28 +181,20 @@ class Servise:
         def after_trial_callback(study, trial):
             if os.path.exists(self.STOP_STUDY):
                 study.stop()
-                # # time.sleep(2)
-                # if (trial.number + 1) % 2 == 0:
-                #     print(f"Остановка после trial #{trial.number + 1}")
-                #     sys.exit(0)
-                #     # study.stop()
-            # x=0
 
-        study.optimize(objective, n_trials=n_trials, n_jobs=3,  callbacks=[after_trial_callback])
-            # logging.debug
-
-        print("\n🥇 Лучшие параметры:", study.best_params)
+        study.optimize(objective, n_trials=n_trials, n_jobs=1, callbacks=[after_trial_callback])
+        # print("\n🥇 Лучшие параметры:", study.best_params)
         return study
 
 
     def ai_expirement(self,use_optuna=False):
         import tensorflow as tf
         # print("зашли в ai_expirement ")
-        tf.config.threading.set_intra_op_parallelism_threads(4)
-        tf.config.threading.set_inter_op_parallelism_threads(4)
+        # tf.config.threading.set_intra_op_parallelism_threads(4)
+        # tf.config.threading.set_inter_op_parallelism_threads(4)
         current_tf=Timeframe._4hour
         current_coins=Coins.FET
-        offset=60   
+        offset=0   
         table_name=current_coins
         limit=1000000
         
@@ -160,7 +210,10 @@ class Servise:
         print ("считали данные из БД")
         df_1min = pd.DataFrame(rows, columns=columns)
         df_1min = df_1min.sort_values("ts").reset_index(drop=True)
-        amount=list(range(0,current_tf.minutes,offset))
+        if offset==0:
+            amount=0
+        else:    
+            amount=list(range(0,current_tf.minutes,offset))
         math_candle=MathCandles()
 
         df = math_candle.generate_multi_shift_features(df_1min,current_tf , amount)
@@ -269,15 +322,16 @@ class Servise:
 
         # model_results_df.sort_values(by="tf_minutes", ascending=True, inplace=True)
         model_results_df.sort_values(by=["tf_minutes", "offset"], ascending=[True, False], inplace=True)
-
-        expr = (
-            (model_results_df["window_size"] + model_results_df["horizon"]) *
-            (model_results_df["tf_minutes"] / model_results_df["offset"])
-            )
+            # найдем количество минут необходимых для обеспечения исходных данных для каждой модели
+        expr = ((model_results_df["window_size"] + model_results_df["horizon"]*2) * model_results_df["offset"])
+            
+        # находим максимальное колличество минут
         max_idx = expr.idxmax()
+        # row_max_ws - самая прожорливая модель
         row_max_ws=model_results_df.loc[max_idx]
 
-        limit=int((expr.loc[max_idx]+(300*row_max_ws["tf_minutes"])))
+        # limit максимальное количество минут + запас в 300 свечей для расчета индикаторов
+        limit=int(expr.loc[max_idx]+(300*row_max_ws["tf_minutes"]))
         query = f""" SELECT * FROM {table_name.value}
                             WHERE timeFrame=%s
                             ORDER BY ts DESC
@@ -289,65 +343,63 @@ class Servise:
                 ]
         df_1min = pd.DataFrame(rows, columns=columns)
         df_1min = df_1min.sort_values("ts").reset_index(drop=True)
-        # Получим 15-мин свечи без смещения
-        # df_15min = math_candle.aggregate_with_offset(df_1min, Timeframe._15min, offset_minutes=0)
-       
-#  if id_row==0 or time_frame!=row["timeframe_enum"]:
-#                 time_frame=row["timeframe_enum"]
-
-#                 query = f""" SELECT * FROM {table_name.value}
-#                             WHERE timeFrame=%s
-#                             ORDER BY ts DESC
-#                             LIMIT %s;"""
-#                 params = (time_frame.label,limit)
-            
-#                 rows = self.db.query_to_bd(query, params)
-
-#                 columns = [
-#                     "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote",
-#                     "ma50", "ma200", "ema12", "ema26", "macd", "macd_signal",
-#                     "rsi14", "macd_histogram", "stochastic_k", "stochastic_d"
-#                 ]
-#                 df = pd.DataFrame(rows, columns=columns)
-#                 df = df.iloc[::-1]  # от старых к новым
-
-
-
-
-
-#                 # actual_df = df[["ts", "c"]].copy()
-#                 # actual_df.columns = ["ts", "y_true"]
-#                 # actual_df["ts"] = pd.to_datetime(actual_df["ts"])
 
         current_timefreme=Timeframe._1min
-        current_offset=0
         # перебор всех моделей которые находятся в папке топ
         for id_row, row in model_results_df.iterrows():
-            # если текущий таймфрейм или оффсет совпадает с предыдущими, то пересчитывать данные не надо
-            if current_timefreme!=row["timeframe_enum"] or current_offset!=row["offset"]:
+            # если текущий таймфрейм совпадает с предыдущими, то пересчитывать данные не надо
+            if current_timefreme!=row["timeframe_enum"]:
                 # если таймфрейм >= 5 минут то произведем перерачсет данных
                 if row["timeframe_enum"].minutes>= 5:
-                    current_offset=row["offset"]
                     current_timefreme=row["timeframe_enum"]
-                    amount=list(range(0,int(row["timeframe_enum"].minutes),row["offset"]))
+                    amount=list(range(0,int(row["timeframe_enum"].minutes),5))
+                    # расчитываем свечи с необходимым таймфреймом и офсет=5минут
                     df = math_candle.generate_multi_shift_features(df_1min,row["timeframe_enum"] , amount)
+                    # сортируеи df по возрастанию (сначала стврые)
                     df = df.sort_values("ts").reset_index(drop=True)
+
 
             model_path=row["model_path"]
             scaler_path=row["scaler_path"]
-            feature_cols = [col for col in df.columns if col not in ["ts", "offset"]]
-            
 
-            for i in range(row["horizon"]):
-                X_input =df.iloc[len(df)-i-row["window_size"]:len(df)-i]
+            feature_cols = [col for col in df.columns if col not in ["ts", "offset"]]
+            if row["offset"]==0:
+                row["offset"]=row["tf_minutes"]
+            step = row["offset"] // 5
+            # организуем цикл от 0 до количества 5 минуток в данном горизонте
+            for i in range( row["horizon"]*step):
+                end_idx = len(df) - row["horizon"] * step + i
+                indices = [end_idx - step * j for j in reversed(range(row["window_size"]))]
+                # X_input =df.iloc[len(df)-i-row["window_size"]:len(df)-i]
+                X_input=df.iloc[indices].reset_index(drop=True)
+                if i==47:
+                    i=i
                 len_ws=row["window_size"]
-                if len(X_input) < len_ws:
+                if len(X_input) < len_ws-1:
                     print(f"Недостаточно данных для модели: {row['model_path']}")
                     continue
                 last_ts = X_input["ts"].iloc[-1]
-                X_input = X_input[feature_cols].tail(len_ws).values
-                y_pred = manager.predict_on_working_models(X_input,model_path,scaler_path)
+                price_last_ts=X_input["c"].iloc[-1]
+                # Сначала оставляем X_input как DataFrame
+                X_input_df = X_input[feature_cols].tail(len_ws)
 
+                # Приводим X_input к признакам скейлера, если возможно
+                if scaler_path in manager.loaded_scalers:
+                    feature_scaler = manager.loaded_scalers[scaler_path][0]
+                    if hasattr(feature_scaler, "feature_names_in_"):
+                        feature_names = feature_scaler.feature_names_in_
+                        try:
+                            X_input_df = X_input_df[feature_names]
+                        except Exception as e:
+                            print(f"⚠️ Ошибка при приведении X_input к feature_names_in_: {e}")
+
+                # Только теперь преобразуем в NumPy-массив
+                X_input = X_input_df.values
+                y_pred = manager.predict_on_working_models(X_input, model_path, scaler_path, feature_names=feature_cols)
+
+                # y_pred = manager.predict_on_working_models(X_input,model_path,scaler_path)
+                # y_pred=praisse_last_ts*np.exp(y_pred)
+                y_pred = price_last_ts * (1 + y_pred)
                 horizon=row["horizon"]/(row["tf_minutes"]/row["offset"])
                 data_forcast=pd.to_datetime(last_ts,unit="ms")
                 # data_forcast=data_forcast.tz_localize('UTC').tz_convert(tzlocal.get_localzone())
@@ -923,3 +975,44 @@ class Servise:
             "time_in_database": time_in_database,
             "current_time_on_the_exchange": data[0]["ts"],
         }
+
+
+    def inverse_target_to_real(self, y_pred, y_true, now_price, target_type):
+        """
+        Преобразует предсказания и истинные значения обратно в цену (USDT), в зависимости от типа таргета.
+
+        :param y_pred: np.array, предсказанные значения
+        :param y_true: np.array, истинные значения
+        :param now_price: np.array, цена "сейчас" (должна быть такого же размера, как y_pred)
+        :param target_type: int, от 0 до 4
+        :return: y_pred_real, y_true_real — массивы восстановленных цен
+        """
+        if target_type == 0:
+            # log(future / now)
+            y_pred_real = now_price * np.exp(y_pred)
+            y_true_real = now_price * np.exp(y_true)
+
+        elif target_type == 1:
+            # log(future)
+            y_pred_real = np.exp(y_pred)
+            y_true_real = np.exp(y_true)
+
+        elif target_type == 2:
+            # (future - now) / now
+            y_pred_real = now_price * (1 + y_pred)
+            y_true_real = now_price * (1 + y_true)
+
+        elif target_type == 3:
+            # future - now
+            y_pred_real = now_price + y_pred
+            y_true_real = now_price + y_true
+
+        elif target_type == 4:
+            # future (уже в цене)
+            y_pred_real = y_pred
+            y_true_real = y_true
+
+        else:
+            raise ValueError(f"Unsupported target_type: {target_type}")
+
+        return y_pred_real, y_true_real

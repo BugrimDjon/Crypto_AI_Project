@@ -153,7 +153,7 @@ class ModelManager:
         return y_pred
 
 
-    def predict_on_working_models(self, X_input, model_path, scaler_path):
+    def predict_on_working_models_old(self, X_input, model_path, scaler_path):
         """
         Выполняет прогноз по входному массиву `X_input` с использованием модели и скейлера.
         Кэширует загруженные модели и скейлеры, чтобы не загружать их повторно.
@@ -194,6 +194,70 @@ class ModelManager:
         y_pred = model.predict(X_scaled)
 
         # Обратное масштабирование целевой переменной
-        y_pred = target_scaler.inverse_transform(y_pred)
+        try:
+    # Пытаемся выполнить обратное преобразование через скейлер
+            y_pred = target_scaler.inverse_transform(y_pred)
+            # После inverse_transform результат — это массив shape (1, 1), извлекаем число
+        except Exception as e:
+            # Если скейлер не обучен или трансформировать нельзя — просто берем значение напрямую
+            print(f"⚠️ Не удалось применить inverse_transform: {e}")
+            y_pred = y_pred
+
+        return y_pred
+
+
+    def predict_on_working_models(self, X_input, model_path, scaler_path, feature_names=None):
+        """
+        Прогнозирует одно значение по входному X_input, используя модель и скейлер.
+        """
+        # --- Загружаем модель ---
+        if model_path not in self.loaded_models:
+            model = load_model(model_path, compile=False)
+            self.loaded_models[model_path] = model
+        else:
+            model = self.loaded_models[model_path]
+
+        # --- Загружаем скейлеры ---
+        if scaler_path not in self.loaded_scalers:
+            scalers = joblib.load(scaler_path)
+            self.loaded_scalers[scaler_path] = scalers
+        else:
+            scalers = self.loaded_scalers[scaler_path]
+
+        feature_scaler, target_scaler = scalers
+
+        # --- Приведение X_input к DataFrame с нужными именами колонок ---
+        try:
+            if isinstance(X_input, np.ndarray):
+                if feature_names is not None:
+                    X_input = pd.DataFrame(X_input, columns=feature_names)
+                else:
+                    X_input = pd.DataFrame(X_input)
+
+            if isinstance(X_input, pd.DataFrame):
+                if hasattr(feature_scaler, "feature_names_in_"):
+                    needed_features = feature_scaler.feature_names_in_
+                    X_input = X_input[needed_features]
+                else:
+                    # fallback: обрезаем до нужного числа признаков
+                    X_input = X_input.iloc[:, :feature_scaler.n_features_in_]
+        except Exception as e:
+            print(f"⚠️ Не удалось привести X_input к признакам скейлера: {e}")
+
+        # --- Масштабирование ---
+        X_scaled = feature_scaler.transform(X_input)
+
+        if X_scaled.ndim == 2:
+            X_scaled = np.expand_dims(X_scaled, axis=0)
+
+        # --- Прогноз ---
+        y_pred = model.predict(X_scaled)
+
+        # --- Обратное преобразование (если нужно) ---
+        if target_scaler is not None:
+            try:
+                y_pred = target_scaler.inverse_transform(y_pred)
+            except Exception as e:
+                print(f"⚠️ Не удалось inverse_transform: {e}")
 
         return y_pred

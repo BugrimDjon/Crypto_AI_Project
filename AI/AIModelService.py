@@ -5,11 +5,11 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, GRU
+from tensorflow.keras.layers import LSTM, Dense, Dropout, GRU, Conv1D, MaxPooling1D, Bidirectional, BatchNormalization, SpatialDropout1D
 from tensorflow.keras import Input, Sequential, regularizers
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import joblib
 from tensorflow.keras.models import load_model, Sequential
 import tensorflow as tf
@@ -90,6 +90,251 @@ class AIModelService:
         self.db = db
 
     def train_model_experiment(
+    self,
+    table_name: Coins,
+    time_frame: Timeframe,
+    limit: int = 1000000,
+    window_size: int = 60,
+    horizon: int = 1,
+    l2_reg=None,
+    model_path=None,
+    scaler_path=None,
+    return_predictions=False,
+    epochs: int = 50,
+    learning_rate: float = 0.001,
+    dropout: float = 0.2,
+    neyro: int = 64,
+    df_ready=None,
+    offset=None,
+    batch_size=64,
+    target_type =0,
+):
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            try:
+                tf.config.set_visible_devices(gpus[0], 'GPU')
+                tf.config.experimental.set_memory_growth(gpus[0], True)
+            except RuntimeError as e:
+                print("Ошибка при настройке GPU:", e)
+
+        mixed_precision.set_global_policy('mixed_float16')
+
+        # === 1. Загрузка данных ===
+        if df_ready is None:
+            query = f"""SELECT ts, o, h, l, c,
+                            vol, volCcy, volCcyQuote,
+                            ma50, ma200, ema12, ema26,
+                            macd, macd_signal, rsi14, macd_histogram,
+                            stochastic_k, stochastic_d
+                        FROM {table_name.value}
+                        WHERE timeFrame=%s AND ts >= %s
+                        ORDER BY ts ASC
+                        LIMIT %s;"""
+            params = (time_frame.label, 0, limit)
+            rows = self.db.query_to_bd(query, params)
+
+            columns = [
+                "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote", "ma50", "ma200", "ema12",
+                "ema26", "macd", "macd_signal", "rsi14", "macd_histogram", "stochastic_k", "stochastic_d"
+            ]
+            df = pd.DataFrame(rows, columns=columns)
+        else:
+            df = df_ready.copy()
+            df = df.drop(columns=["offset"], errors="ignore")
+            
+
+        # === 2. Формирование таргета ===
+        if target_type == 0:
+            df["target"] = np.log(df["c"].shift(-horizon) / df["c"])
+            inverse_transform = lambda pred, now: now * np.exp(pred)
+        elif target_type == 1:
+            df["target"] = np.log(df["c"].shift(-horizon))
+            inverse_transform = lambda pred, now: np.exp(pred)
+        elif target_type == 2:
+            df["target"] = (df["c"].shift(-horizon) - df["c"]) / df["c"]
+            inverse_transform = lambda pred, now: now * (1 + pred)
+        elif target_type == 3:
+            df["target"] = df["c"].shift(-horizon) - df["c"]
+            inverse_transform = lambda pred, now: now + pred
+        elif target_type == 4:
+            df["target"] = df["c"].shift(-horizon)
+            inverse_transform = lambda pred, now: pred
+
+        df.dropna(inplace=True)
+
+       
+       
+        # Используем относительное изменение цены (в процентах): (future - now) / now
+        # df["target"] = (df["c"].shift(-horizon) - df["c"]) / df["c"]
+        # df["target"] = np.log(df["c"].shift(-horizon) / df["c"])
+        # df["target"] = np.log(df["c"].shift(-horizon)) 
+
+        
+        # Подменим c
+        replace_c = False
+        if replace_c:
+            df["c"] = 100
+        # Конец  Подменим c
+
+        features = df.drop(columns=["ts", "target", "c"])
+        # === 3. Масштабирование ===
+
+        # Масштабируем
+        feature_scaler = MinMaxScaler()
+        features_scaled = feature_scaler.fit_transform(features)
+        if target_type in [1, 4]:
+            target_scaler = MinMaxScaler()
+            y_scaled = target_scaler.fit_transform(df["target"].values.reshape(-1, 1))
+        else:
+            target_scaler = None
+            y_scaled = df["target"].values.reshape(-1, 1)
+
+
+        # === 4. Формирование последовательностей ===
+        def create_sequences(X, y, window_size, horizon):
+            Xs, ys = [], []
+            for i in range(len(X) - window_size - horizon + 1):
+                Xs.append(X[i : (i + window_size)])
+                ys.append(y[i + window_size + horizon - 1])
+            return np.array(Xs), np.array(ys)
+
+        X_lstm, y_lstm = create_sequences(features_scaled, df["target"].values.reshape(-1, 1), window_size, horizon)
+
+        # === 5. Train/Test Split ===
+        split_idx = int(0.8 * len(X_lstm))
+        X_train, X_test = X_lstm[:split_idx], X_lstm[split_idx:]
+        y_train, y_test = y_lstm[:split_idx], y_lstm[split_idx:]
+
+        # Приводим к нужному типу
+        X_train = X_train.astype(np.float32)
+        y_train = y_train.astype(np.float32)
+        X_test = X_test.astype(np.float32)
+        y_test = y_test.astype(np.float32)
+
+        # Перемешиваем обучающую выборку
+        indices = np.arange(len(X_train))
+        np.random.shuffle(indices)
+        X_train, y_train = X_train[indices], y_train[indices]
+
+        # === 6. Dataset и batching ===
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train)).batch(batch_size)
+        val_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)).batch(batch_size)
+
+        # === 7. Создание модели ===
+        # model = Sequential([
+        #     Input(shape=(X_train.shape[1], X_train.shape[2])),
+        #     Conv1D(filters=32, kernel_size=3, activation="relu"),
+        #     MaxPooling1D(pool_size=2),
+        #     Bidirectional(GRU(neyro, return_sequences=True, kernel_regularizer=regularizers.l2(l2_reg), implementation=1)),
+        #     Bidirectional(GRU(neyro // 2, return_sequences=False, kernel_regularizer=regularizers.l2(l2_reg), implementation=1)),
+        #     Dropout(dropout),
+        #     Dense(32, activation="relu", kernel_regularizer=regularizers.l2(l2_reg)),
+        #     Dense(1, dtype='float32')  # Прогноз относительного изменения
+        # ])
+
+        model = Sequential([
+            Input(shape=(X_train.shape[1], X_train.shape[2])),
+            Conv1D(filters=16, kernel_size=3, activation="relu"),
+            BatchNormalization(),
+            SpatialDropout1D(dropout),
+            MaxPooling1D(pool_size=2),
+
+            Bidirectional(GRU(neyro, return_sequences=True, kernel_regularizer=regularizers.l2(l2_reg))),
+            SpatialDropout1D(dropout),
+
+            Bidirectional(GRU(neyro // 2, return_sequences=False, kernel_regularizer=regularizers.l2(l2_reg))),
+            Dropout(dropout),  # 🔹 Оставляем и здесь тоже (финальный слой)
+
+            Dense(16, activation="relu", kernel_regularizer=regularizers.l2(l2_reg)),
+            Dense(1, dtype='float32')
+        ])
+
+
+        model.compile(optimizer=Adam(learning_rate), loss="mse")
+
+        # === 8. Callbacks ===
+        early_stop = EarlyStopping(monitor="val_loss", patience=20, restore_best_weights=True)
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, min_lr=1e-6, verbose=1)
+
+        # === 9. Обучение ===
+        try:
+            history = model.fit(
+                train_dataset,
+                epochs=epochs,
+                validation_data=val_dataset,
+                callbacks=[early_stop, SystemMonitorCallback(), reduce_lr],
+                verbose=1,
+            )
+        except Exception as e:
+            print(f"Ошибка при обучении: {e}")
+            tf.keras.backend.clear_session()
+            gc.collect()
+            raise
+
+        # === 10. Оценка и сохранение ===
+        loss = model.evaluate(X_test, y_test)
+        print(f"Final loss (MSE) on test set: {loss}")
+
+        model.save(model_path)
+        with open(scaler_path, "wb") as f:
+            pickle.dump((feature_scaler, target_scaler), f)  # Сохраняем только feature_scaler
+
+        # === 11. Прогнозы (если нужно вернуть) ===
+        if return_predictions:
+            y_pred = model.predict(X_test, batch_size=batch_size)
+
+            if target_type in [1, 4] and target_scaler is not None:
+                y_pred = target_scaler.inverse_transform(y_pred)
+                y_test = target_scaler.inverse_transform(y_test)
+
+            # Берем последние цены close на момент прогноза
+            close_test_now = df["c"].values[split_idx + window_size - 1 : split_idx + window_size - 1 + len(y_test)]
+
+            # Восстанавливаем реальные будущие цены и предсказанные
+            if target_type == 0:
+                # log(future / now) => future = now * exp(pred)
+                predicted_price = close_test_now * np.exp(y_pred.flatten())
+                true_price = close_test_now * np.exp(y_test.flatten())
+            elif target_type == 1:
+                # log(future) => future = exp(pred)
+                predicted_price = np.exp(y_pred.flatten())
+                true_price = np.exp(y_test.flatten())
+            elif target_type == 2:
+                # (future - now) / now => future = now * (1 + pred)
+                predicted_price = close_test_now * (1 + y_pred.flatten())
+                true_price = close_test_now * (1 + y_test.flatten())
+            elif target_type == 3:
+                # future - now => future = now + pred
+                predicted_price = close_test_now + y_pred.flatten()
+                true_price = close_test_now + y_test.flatten()
+            elif target_type == 4:
+                # target = future => предсказание — это уже цена
+                predicted_price = y_pred.flatten()
+                true_price = y_test.flatten()
+
+
+            # Логируем корреляции
+            corr_with_future = np.corrcoef(predicted_price, true_price)[0, 1]
+            corr_with_now = np.corrcoef(predicted_price, close_test_now)[0, 1]
+
+            print(f"📈 Корреляция прогноза с реальной будущей ценой: {corr_with_future:.4f}")
+            print(f"📉 Корреляция прогноза с текущей (входной) ценой: {corr_with_now:.4f}")
+            
+
+
+            # y_pred — относительное изменение, преобразовывать не нужно
+            del features, features_scaled, df
+            gc.collect()
+            return model, history, batch_size, feature_scaler, None, y_test, y_pred, corr_with_future, corr_with_now
+
+        return model, history, batch_size, feature_scaler, None
+
+
+
+
+
+
+    def train_model_experiment_big_korelaciya(
         self,
         table_name: Coins,
         time_frame: Timeframe,
@@ -144,7 +389,10 @@ class AIModelService:
             df = df.drop(columns=["offset"])
 
         # Целевая — следующая цена закрытия
-        df["target"] = df["c"].shift(-horizon)
+        # df["target"] = df["c"].shift(-horizon) # сильно коррелирует с текущей ценой
+        #df["target"] = np.log(df["c"].shift(-horizon)) - np.log(df["c"])  # применяем  логарифмическую разницу цены закрытия
+        df["target"] = (df["c"].shift(-horizon) - df["c"]) / df["c"]
+        
         df.dropna(inplace=True)
 
         features = df.drop(columns=["ts", "target"])
@@ -245,15 +493,24 @@ class AIModelService:
         model.compile(optimizer=Adam(learning_rate), loss="mse")
 
         early_stop = EarlyStopping(
-            monitor="val_loss", patience=5, restore_best_weights=True
+            monitor="val_loss", patience=30, restore_best_weights=True
         )
+
+        reduce_lr = ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=10,
+            min_lr=1e-6,
+            verbose=1
+        )
+
         # print("=== Начинаем model.fit ===")
         try:
             history = model.fit(
                 train_dataset,
                 epochs=epochs,
                 validation_data=val_dataset,
-                callbacks=[early_stop, SystemMonitorCallback()],
+                callbacks=[early_stop, SystemMonitorCallback(), reduce_lr ],
                 verbose=1,
             )
         except Exception as e:
